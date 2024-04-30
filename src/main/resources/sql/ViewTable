@@ -1,0 +1,1119 @@
+/*
+* @author Newaz Sharif
+* @since 3rd September, 2022
+*/
+
+DELIMITER
+DROP VIEW IF EXISTS ledger_transaction;
+DELIMITER
+
+CREATE VIEW ledger_transaction as select trans.company_id, trans.rowId as row_id,
+       trans.distributor_id, trans.transactionDate as transaction_date, trans.description, trans.created_date,
+            trans.debit, trans.credit
+          from (
+                select si.id as rowId, si.company_id, si.distributor_id, si.invoice_date as transactionDate, si.created_date,
+                    concat("Sales ", "(Invoice No ",si.invoice_no,")") as description,
+                    si.invoice_amount as debit, concat(0) as credit
+                         from sales_invoice si
+                              where  si.is_active is true and si.is_deleted is false
+/*ledger hit before acknowledgement*/
+/*# NGLSC-2261 si.is_accepted is true and*/
+                             					UNION ALL
+
+			     select sales_return.id as rowId, sales_return.company_id, sales_return.distributor_id,
+			     date_format(sr.return_date, '%Y-%m-%d') as transactionDate,
+                	sr.created_date ,concat("Sales Return ","(Return No ",sr.return_no,")") as description,
+                			        concat(0) as debit, sales_return.sales_return_amount as credit from sales_return sr
+                                         inner join
+
+                                         (select srp.company_id, srp.distributor_id, invtdet.inv_transaction_id, srp.id,
+
+                                  /*sum(invtdet.quantity * round((ptp.trade_price -
+                				                    (ifnull(case when calculation_type = 'PERCENTAGE'
+                				                                then ((ptp.trade_price * td.discount_value)/100)
+                					else td.discount_value end,0))),4)) sales_return_amount from sales_return_proposal srp
+                                  inner join sales_return_proposal_details srpd on srp.id = srpd.sales_return_proposal_id
+                                  inner join sales_return sr on srp.id = sr.sales_return_proposal_id
+                                         and srp.approval_status = 'APPROVED' and srp.is_active is true
+                                         and srp.is_deleted is false and sr.is_active is true and sr.is_deleted is false*/
+
+                                  sum(invtdet.quantity * round((ptp.trade_price -
+                                                (ifnull(case when calculation_type = 'PERCENTAGE'
+                                                            then ((ptp.trade_price * td.discount_value)/100)
+                                    else td.discount_value end,0))),4)) -
+                                      (si.invoice_discount* sum(invtdet.quantity * round((ptp.trade_price -
+                                                    (ifnull(case when calculation_type = 'PERCENTAGE'
+                                                                then ((ptp.trade_price * td.discount_value)/100)
+                                    else td.discount_value end,0))),4)) / (si.invoice_discount+si.invoice_amount)) sales_return_amount  from sales_return_proposal srp
+                                    inner join sales_return_proposal_details srpd on srp.id = srpd.sales_return_proposal_id
+                                    inner join sales_return sr on srp.id = sr.sales_return_proposal_id
+                                           and srp.approval_status = 'APPROVED' and srp.is_active is true
+                                           and srp.is_deleted is false and sr.is_active is true and sr.is_deleted is false
+                                   inner join sales_invoice si on si.id = srp.sales_invoice_id
+
+                		         inner join (select sr.id sales_return_id, sr.inv_transaction_id, invtd.product_id,
+                		                        invtd.quantity
+                					from sales_return sr inner join inv_transaction_details invtd
+                						on invtd.inv_transaction_id = sr.inv_transaction_id) invtdet
+                							on sr.id = invtdet.sales_return_id and invtdet.product_id = srpd.product_id
+                                         inner join product_trade_price ptp on srpd.product_trade_price_id = ptp.id
+                                                and ptp.expiry_date is null
+
+                                 left join trade_discount td on srpd.trade_discount_id = td.id
+                				 and td.is_deleted is false group by srp.company_id, srp.distributor_id,
+                				 invtdet.inv_transaction_id, srp.id) sales_return on sr.inv_transaction_id = sales_return.inv_transaction_id
+
+                             					UNION ALL
+
+                    select cn.id as rowId, cn.company_id, cn.distributor_id, cn.proposal_date as transactionDate,
+                    cn.created_date , concat("Credit Note Issue for ",
+                    (case when cn.transaction_type = "ORD" then "Commission" else "Sales Return " end),
+                    "(Credit Note No ",cn.note_no ,")") as description, concat(0) as debit, cn.amount  as credit
+                         from credit_debit_note cn
+                           	where cn.approval_status = 'APPROVED' and cn.note_type = 'CREDIT' and cn.is_deleted is false
+                                and cn.is_active is true
+
+                             				    UNION ALL
+
+                select dn.id as rowId, dn.company_id, dn.distributor_id, dn.proposal_date as transactionDate,dn.created_date ,
+                    concat("Debit Note Issue for ", "(Debit Note No ",dn.note_no ,")") as description,
+                    dn.amount as debit,concat(0) as credit
+                        from credit_debit_note dn where dn.approval_status = 'APPROVED'
+                             and dn.note_type = 'DEBIT' and dn.is_deleted is false and dn.is_active is true
+
+                             					UNION ALL
+
+                select pc.id as rowId, pc.company_id, pc.distributor_id, pc.payment_date as transactionDate, pc.created_date ,
+                 concat("Payment Received"," (",pc.payment_no,")") as description,
+                 concat(0) as debit, pc.collection_amount as credit
+                        from payment_collection pc
+                             where pc.approval_status = 'APPROVED' and pc.is_deleted is false
+                             and pc.is_active is true and pc.action_taken_date is not null
+
+                                             UNION ALL
+
+                select db.id as rowId, db.company_id, db.distributor_id, db.transaction_date as transactionDate, db.created_date,
+                       concat("Opening Balance As ", " [",db.reference_no,"]") as description,
+                       db.balance as debit, concat(0) as credit
+                from distributor_balance db
+                inner join invoice_nature invNat on invNat.id = db.invoice_nature_id
+                and invNat.is_active is true and invNat.is_deleted is false
+                where  db.is_active is true and db.is_deleted is false
+
+                                                      UNION ALL
+
+                select pc.id as rowId, pc.company_id, pc.distributor_id, pc.payment_date as transactionDate, pc.created_date ,
+                       concat("Opening Balance As ", pc.payment_nature ," [",pc.reference_no,"]") as description,
+                       concat(0) as debit, pc.collection_amount as credit
+                from payment_collection pc
+                where pc.approval_status = 'APPROVED' and pc.is_deleted is false
+                and pc.is_active is true and pc.action_taken_date is null
+
+          ) as trans order by trans.created_date;
+
+
+DELIMITER
+DROP VIEW IF EXISTS stock_data;
+DELIMITER
+create view stock_data as
+select stock.organization_id, stock.company_id, stock.depot_id, stock.transaction_type,
+stock.product_id, stock.stock_quantity,stock.from_store_id, stock.to_store_id from
+        (select invdet.organization_id, invdet.company_id, invdet.depot_id, invtransdet.transaction_type,
+            invtransdet.product_id, sum(invtransdet.quantity) stock_quantity, invtransdet.from_store_id,
+            invtransdet.to_store_id   from(select invr.inv_transaction_id, invr.organization_id,
+            invr.company_id, invr.depot_id from inv_receive invr
+            where invr.is_active is true and invr.is_deleted is false) invdet
+
+                             	inner join
+
+        (select invt.id transactionId, invt.transaction_type, itd.product_id, sum(itd.quantity) quantity,
+            itd.from_store_id, itd.to_store_id from inv_transaction invt
+                inner join inv_transaction_details itd on invt.id = itd.inv_transaction_id
+                and itd.rate is not null
+                    group by invt.id, invt.transaction_type,itd.product_id, itd.from_store_id,
+                    itd.to_store_id) invtransdet on invdet.inv_transaction_id = invtransdet.transactionId
+        group by invdet.organization_id, invdet.company_id, invdet.depot_id, invtransdet.transaction_type,
+                invtransdet.product_id,invtransdet.from_store_id, invtransdet.to_store_id
+
+					union all
+
+        select invdet.organization_id, invdet.company_id, invdet.from_depot_id, invtransdet.transaction_type,
+        invtransdet.product_id, sum(invtransdet.quantity), invtransdet.from_store_id, invtransdet.to_store_id
+        from(select invt.inv_transaction_id, invt.organization_id, invt.company_id, invt.from_depot_id
+        from inv_transfer invt where invt.is_active is true and invt.is_deleted is false) invdet
+
+                             	inner join
+
+        (select invt.id transactionId, invt.transaction_type, itd.product_id, sum(itd.quantity) quantity,
+            itd.from_store_id, itd.to_store_id from inv_transaction invt inner join inv_transaction_details itd
+            on invt.id = itd.inv_transaction_id and invt.transaction_type = 'TRANSFER_SENT' group by invt.id,
+            invt.transaction_type,itd.product_id, itd.from_store_id, itd.to_store_id) invtransdet
+            on invdet.inv_transaction_id = invtransdet.transactionId
+            group by invdet.organization_id, invdet.company_id, invdet.from_depot_id,
+            invtransdet.transaction_type,invtransdet.product_id,invtransdet.from_store_id, invtransdet.to_store_id
+
+                             	union all
+
+       select invdet.organization_id, invdet.company_id, invdet.from_depot_id, invtransdet.transaction_type,
+       invtransdet.product_id, sum(invtransdet.quantity), invtransdet.from_store_id, invtransdet.to_store_id
+       from(select invt.inv_transaction_id, invt.organization_id, invt.company_id, invt.from_depot_id
+              from inv_transfer invt where invt.is_active is true and invt.is_deleted is false) invdet
+
+                             	inner join
+
+       (select invt.id transactionId, invt.transaction_type, itd.product_id, sum(itd.quantity) quantity,
+            itd.from_store_id, concat(NULL) to_store_id from inv_transaction invt inner join inv_transaction_details itd
+            on invt.id = itd.inv_transaction_id  and invt.transaction_type = 'TRANSFER_RECEIVE' group by invt.id,
+            invt.transaction_type,itd.product_id, itd.from_store_id, itd.to_store_id) invtransdet
+            on invdet.inv_transaction_id = invtransdet.transactionId
+            group by invdet.organization_id, invdet.company_id, invdet.from_depot_id,
+            invtransdet.transaction_type,invtransdet.product_id,invtransdet.from_store_id, invtransdet.to_store_id
+
+                                union all
+
+       select invdet.organization_id, invdet.company_id, invdet.to_depot_id, invtransdet.transaction_type,
+       invtransdet.product_id, sum(invtransdet.quantity), invtransdet.from_store_id, invtransdet.to_store_id
+       from(select invt.inv_transaction_id, invt.organization_id, invt.company_id, invt.to_depot_id
+                  from inv_transfer invt where invt.is_active is true and invt.is_deleted is false) invdet
+
+                             	inner join
+
+       (select invt.id transactionId, invt.transaction_type, itd.product_id, sum(itd.quantity) quantity,
+            concat(NULL) from_store_id, itd.to_store_id from inv_transaction invt inner join inv_transaction_details itd
+            on invt.id = itd.inv_transaction_id and invt.transaction_type = 'TRANSFER_RECEIVE' group by invt.id,
+            invt.transaction_type,itd.product_id, itd.from_store_id, itd.to_store_id) invtransdet
+            on invdet.inv_transaction_id = invtransdet.transactionId
+            group by invdet.organization_id, invdet.company_id, invdet.to_depot_id, invtransdet.transaction_type,
+            invtransdet.product_id,invtransdet.from_store_id, invtransdet.to_store_id
+
+                             	union all
+
+       select invdet.organization_id, invdet.company_id, invdet.depot_id, invtransdet.transaction_type,
+            invtransdet.product_id, sum(invtransdet.quantity), invtransdet.from_store_id, invtransdet.to_store_id
+            from(select invdc.inv_transaction_id, invdc.organization_id, invdc.company_id, invdc.depot_id
+                             	from inv_delivery_challan invdc
+                             	where invdc.is_active is true and invdc.is_deleted is false) invdet
+
+                             	inner join
+
+            (select invt.id transactionId, invt.transaction_type, itd.product_id, sum(itd.quantity) quantity,
+                itd.from_store_id, itd.to_store_id from inv_transaction invt inner join inv_transaction_details itd
+                on invt.id = itd.inv_transaction_id group by invt.id, invt.transaction_type,itd.product_id,
+                itd.from_store_id, itd.to_store_id) invtransdet on invdet.inv_transaction_id = invtransdet.transactionId
+                group by invdet.organization_id, invdet.company_id, invdet.depot_id, invtransdet.transaction_type,
+                invtransdet.product_id,invtransdet.from_store_id, invtransdet.to_store_id
+
+                             	union all
+
+       select invdet.organization_id, invdet.company_id, invdet.depot_id, invtransdet.transaction_type,
+            invtransdet.product_id, sum(invtransdet.quantity), invtransdet.from_store_id, invtransdet.to_store_id
+            from(select sr.inv_transaction_id, sr.organization_id, sr.company_id, sr.depot_id
+                    from sales_return sr where sr.is_active is true and sr.is_deleted is false) invdet
+
+                             	inner join
+
+       (select invt.id transactionId, invt.transaction_type, itd.product_id, sum(itd.quantity) quantity,
+            itd.from_store_id, itd.to_store_id from inv_transaction invt inner join inv_transaction_details itd
+            on invt.id = itd.inv_transaction_id group by invt.id, invt.transaction_type,itd.product_id,
+            itd.from_store_id, itd.to_store_id) invtransdet on invdet.inv_transaction_id = invtransdet.transactionId
+            group by invdet.organization_id, invdet.company_id, invdet.depot_id,invtransdet.transaction_type,
+            invtransdet.product_id,invtransdet.from_store_id, invtransdet.to_store_id
+
+                             	union all
+
+       select invdet.organization_id, invdet.company_id, invdet.depot_id, invtransdet.transaction_type,
+            invtransdet.product_id, sum(invtransdet.quantity), invtransdet.from_store_id, invtransdet.to_store_id
+            from(select issm.inv_transaction_id, issm.organization_id, issm.company_id, issm.depot_id
+                    from inter_store_stock_movement issm
+                          where issm.is_active is true and issm.is_deleted is false) invdet
+
+                             	inner join
+
+       (select invt.id transactionId, invt.transaction_type, itd.product_id, sum(itd.quantity) quantity,
+            itd.from_store_id, itd.to_store_id from inv_transaction invt inner join inv_transaction_details itd
+            on invt.id = itd.inv_transaction_id group by invt.id, invt.transaction_type,itd.product_id,
+            itd.from_store_id, itd.to_store_id) invtransdet on invdet.inv_transaction_id = invtransdet.transactionId
+            group by invdet.organization_id, invdet.company_id, invdet.depot_id, invtransdet.transaction_type,
+            invtransdet.product_id,invtransdet.from_store_id, invtransdet.to_store_id
+       ) stock;
+
+DELIMITER
+DROP VIEW IF EXISTS stock_details_data;
+DELIMITER
+
+create view stock_details_data as
+select temp.company_id, temp.product_id, temp.depot_id,
+max(case when temp.store_type = 'REGULAR' then (available_stock) end) as REGULAR,
+max(case when temp.store_type = 'QUARANTINE' then (available_stock) end) as QUARANTINE,
+max(case when temp.store_type = 'IN_TRANSIT' then (available_stock) end) as IN_TRANSIT,
+max(case when temp.store_type = 'RESTRICTED' then (available_stock) end) as RESTRICTED,
+max(case when temp.store_type = 'BLOCKED' then (available_stock) end) as BLOCKED from
+
+(select inwarprod.company_id, inwarprod.product_id, inwarprod.depot_id, inwarprod.to_store_id store_id,
+    (inwarprod.inwards_quantity - ifnull(outwarprod.outwards_quantity,0)) available_stock, inwarprod.store_type from
+
+(select sd.product_id, sum(sd.stock_quantity) inwards_quantity, sd.to_store_id, sd.depot_id, sd.company_id,st.store_type
+    from stock_data sd
+inner join store st on sd.to_store_id = st.id
+and sd.to_store_id=(select id from store where store_type='REGULAR' and is_active is true and is_deleted is false
+
+) group by sd.company_id,sd.depot_id, sd.to_store_id,sd.product_id,st.store_type) inwarprod
+		left join
+(select sd.product_id,sum(sd.stock_quantity) outwards_quantity, sd.from_store_id, sd.depot_id, sd.company_id,
+st.store_type  from stock_data sd
+inner join store st on sd.from_store_id = st.id
+and sd.from_store_id=(select id from store where store_type='REGULAR' and is_active is true
+and is_deleted is false) group by sd.company_id,sd.depot_id, sd.from_store_id,sd.product_id) outwarprod
+on inwarprod.product_id = outwarprod.product_id and inwarprod.to_store_id = outwarprod.from_store_id
+and inwarprod.depot_id = outwarprod.depot_id and inwarprod.company_id = outwarprod.company_id
+
+							union all
+
+select inwarprod.company_id, inwarprod.product_id, inwarprod.depot_id, inwarprod.to_store_id store_id,
+(inwarprod.inwards_quantity - ifnull(outwarprod.outwards_quantity,0)) available_stock, inwarprod.store_type from
+
+(select sd.product_id, sum(sd.stock_quantity) inwards_quantity, sd.to_store_id, sd.depot_id, sd.company_id,st.store_type
+ from stock_data sd
+inner join store st on sd.to_store_id = st.id
+and sd.to_store_id=(select id from store where store_type='IN_TRANSIT' and is_active is true and is_deleted is false
+
+) group by sd.company_id,sd.depot_id, sd.to_store_id,sd.product_id,st.store_type) inwarprod
+		left join
+(select sd.product_id,sum(sd.stock_quantity) outwards_quantity, sd.from_store_id, sd.depot_id, sd.company_id,
+st.store_type  from stock_data sd
+inner join store st on sd.from_store_id = st.id
+and sd.from_store_id=(select id from store where store_type='IN_TRANSIT' and is_active is true and is_deleted is false)
+group by sd.company_id,sd.depot_id, sd.from_store_id,sd.product_id) outwarprod
+on inwarprod.product_id = outwarprod.product_id and inwarprod.to_store_id = outwarprod.from_store_id
+and inwarprod.depot_id = outwarprod.depot_id and inwarprod.company_id = outwarprod.company_id
+
+							union all
+
+select inwarprod.company_id, inwarprod.product_id, inwarprod.depot_id, inwarprod.to_store_id store_id,
+(inwarprod.inwards_quantity - ifnull(outwarprod.outwards_quantity,0)) available_stock, inwarprod.store_type from
+
+(select sd.product_id, sum(sd.stock_quantity) inwards_quantity, sd.to_store_id, sd.depot_id, sd.company_id,st.store_type
+ from stock_data sd
+inner join store st on sd.to_store_id = st.id
+and sd.to_store_id=(select id from store where store_type='QUARANTINE' and is_active is true and is_deleted is false
+
+) group by sd.company_id,sd.depot_id, sd.to_store_id,sd.product_id,st.store_type) inwarprod
+		left join
+(select sd.product_id,sum(sd.stock_quantity) outwards_quantity, sd.from_store_id, sd.depot_id, sd.company_id,
+st.store_type  from stock_data sd
+inner join store st on sd.from_store_id = st.id
+and sd.from_store_id=(select id from store where store_type='QUARANTINE' and is_active is true and is_deleted is false)
+group by sd.company_id,sd.depot_id, sd.from_store_id,sd.product_id) outwarprod
+on inwarprod.product_id = outwarprod.product_id and inwarprod.to_store_id = outwarprod.from_store_id
+and inwarprod.depot_id = outwarprod.depot_id and inwarprod.company_id = outwarprod.company_id
+
+							 union all
+
+select inwarprod.company_id, inwarprod.product_id, inwarprod.depot_id, inwarprod.to_store_id,
+(inwarprod.inwards_quantity - ifnull(outwarprod.outwards_quantity,0)) available_stock, inwarprod.store_type from
+
+(select sd.product_id, sum(sd.stock_quantity) inwards_quantity, sd.to_store_id, sd.depot_id, sd.company_id,st.store_type
+from stock_data sd
+inner join store st on sd.to_store_id = st.id
+and sd.to_store_id=(select id from store where store_type='RESTRICTED' and is_active is true and is_deleted is false
+
+) group by sd.company_id,sd.depot_id, sd.to_store_id,sd.product_id,st.store_type) inwarprod
+		left join
+(select sd.product_id,sum(sd.stock_quantity) outwards_quantity, sd.from_store_id, sd.depot_id, sd.company_id,
+st.store_type  from stock_data sd
+inner join store st on sd.from_store_id = st.id
+and sd.from_store_id=(select id from store where store_type='RESTRICTED' and is_active is true and is_deleted is false)
+group by sd.company_id,sd.depot_id, sd.from_store_id,sd.product_id) outwarprod
+on inwarprod.product_id = outwarprod.product_id and inwarprod.to_store_id = outwarprod.from_store_id
+and inwarprod.depot_id = outwarprod.depot_id and inwarprod.company_id = outwarprod.company_id
+
+                             union all
+
+select sb.company_id,rem_book_det.product_id, sb.depot_id, concat(0) as to_store_id,
+sum(rem_book_det.reminQuantityInBooking) available_stock,
+concat('BLOCKED') as store_type from sales_booking sb inner join
+
+(select all_sbd.sales_booking_id, all_sbd.product_id,
+(all_sbd.quantity - ifnull(dlvd_booking.quantity,0)) reminQuantityInBooking  from sales_booking_details all_sbd left join
+
+(select sod.sales_booking_details_id, sum(sod.quantity) quantity from sales_booking_details sbd inner join
+(select dlv_sod.sales_booking_details_id, dlv_itd.sales_order_details_id, dlv_itd.quantity
+from sales_order_details dlv_sod inner join (select sales_order_details_id, sum(quantity) quantity
+from inv_transaction_details where sales_order_details_id is not null
+group by sales_order_details_id) dlv_itd on dlv_sod.id = dlv_itd.sales_order_details_id) sod
+on sbd.id = sod.sales_booking_details_id group by sod.sales_booking_details_id) dlvd_booking
+on all_sbd.id = dlvd_booking.sales_booking_details_id
+where all_sbd.sales_booking_status not in ("TICKET_REJECTED","SALES_BOOKED")) rem_book_det
+on sb.id = rem_book_det.sales_booking_id group by sb.organization_id,sb.company_id,rem_book_det.product_id, sb.depot_id
+) temp group by temp.company_id, temp.product_id, temp.depot_id;
+
+DELIMITER
+DROP VIEW IF EXISTS warehouse_stock_movement;
+DELIMITER
+CREATE VIEW warehouse_stock_movement as
+select sdd.organization_id, sdd.company_id, sdd.depot_id,sdd.transaction_date,
+sdd.transaction_type, p.product_category_id, sdd.product_id, sdd.quantity,sdd.rate,sdd.from_store_id, sdd.to_store_id
+                    from
+
+(select invdet.organization_id, invdet.company_id, invdet.depot_id, invtransdet.transaction_date,invtransdet.transaction_type,
+invtransdet.product_id, (invtransdet.quantity),invtransdet.rate, invtransdet.from_store_id,
+invtransdet.to_store_id   from(select invr.inv_transaction_id, invr.organization_id, invr.company_id, invr.depot_id
+                             	from inv_receive invr
+where invr.is_active is true and invr.is_deleted is false
+and depot_id in(select id from depot where is_central_warehouse is true)) invdet
+
+                             	inner join
+
+(select invt.id transactionId, invt.transaction_date, invt.transaction_type, itd.product_id, sum(itd.quantity) quantity, sum(itd.rate) rate,
+ itd.from_store_id, itd.to_store_id from inv_transaction invt inner join inv_transaction_details itd
+    on invt.id = itd.inv_transaction_id and itd.rate is not null
+        and itd.to_store_id in(select id from store where store_type in('REGULAR','QUARANTINE'))
+    group by invt.id, invt.transaction_type,itd.product_id, itd.from_store_id, itd.to_store_id) invtransdet
+    on invdet.inv_transaction_id = invtransdet.transactionId
+
+				union all
+
+select invdet.organization_id, invdet.company_id, invdet.depot_id, invtransdet.transaction_date,invtransdet.transaction_type,
+invtransdet.product_id, (invtransdet.quantity), invtransdet.rate, invtransdet.from_store_id, invtransdet.to_store_id
+from(select idc.inv_transaction_id, idc.organization_id, idc.company_id, idc.depot_id
+           from inv_delivery_challan idc where idc.is_active is true and idc.is_deleted is false
+           ) invdet
+
+                            inner join
+
+(select invt.id transactionId, invt.transaction_date, invt.transaction_type, itd.product_id, (itd.quantity) quantity,
+    (itd.rate) rate, itd.from_store_id, itd.to_store_id from inv_transaction invt
+     inner join
+     inv_transaction_details itd on invt.id = itd.inv_transaction_id
+     and invt.transaction_type='DELIVERY_CHALLAN') invtransdet on invdet.inv_transaction_id = invtransdet.transactionId
+
+     				union all
+
+select invdet.organization_id, invdet.company_id, invdet.depot_id, invtransdet.transaction_date,invtransdet.transaction_type,
+invtransdet.product_id, (invtransdet.quantity), invtransdet.rate, invtransdet.from_store_id, invtransdet.to_store_id
+from(select sr.inv_transaction_id, sr.organization_id, sr.company_id, sr.depot_id
+           from sales_return sr where sr.is_active is true and sr.is_deleted is false
+           ) invdet
+
+                            inner join
+
+(select invt.id transactionId, invt.transaction_date, invt.transaction_type, itd.product_id, (itd.quantity) quantity,
+    (itd.rate) rate, itd.from_store_id, itd.to_store_id from inv_transaction invt
+     inner join
+     inv_transaction_details itd on invt.id = itd.inv_transaction_id
+     and invt.transaction_type='RETURN') invtransdet on invdet.inv_transaction_id = invtransdet.transactionId
+
+ ) as sdd  inner join product p on p.id=sdd.product_id
+
+ DELIMITER
+ DROP VIEW IF EXISTS weighted_average_rate;
+ DELIMITER
+  create view weighted_average_rate as select war.company_id, war.product_id, war.weighted_average_rate from
+
+  (select inwarprod.company_id, inwarprod.product_id,
+  round((inwarprod.inwards_value - ifnull(outwarprod.outwards_value,0)) / (inwarprod.inwards_quantity - ifnull(outwarprod.outwards_quantity,0)),4)
+        weighted_average_rate from
+
+ (select cwsm.company_id, cwsm.product_id, sum(cwsm.quantity * ifnull(cwsm.rate,0)) inwards_value,
+ sum(cwsm.quantity) inwards_quantity  from warehouse_stock_movement cwsm
+ inner join store st on cwsm.to_store_id = st.id and cwsm.transaction_type in('PRODUCTION_RECEIVE','RETURN')
+  group by cwsm.company_id, cwsm.product_id) inwarprod
+ 		left join
+ (select company_id, product_id, sum(quantity * ifnull(rate,0)) outwards_value, sum(quantity) outwards_quantity
+ from warehouse_stock_movement cwsm
+ /* this store not saving at the time challan
+  inner join store st on cwsm.to_store_id = st.id
+  and st.store_type='IN_TRANSIT'
+  */
+  where cwsm.transaction_type='DELIVERY_CHALLAN' group by company_id, product_id) outwarprod
+  on inwarprod.product_id = outwarprod.product_id and inwarprod.company_id = outwarprod.company_id
+  ) war;
+
+
+DELIMITER
+DROP VIEW IF EXISTS batch_wise_stock_data_damage;
+DELIMITER
+
+create view batch_wise_stock_data_damage as
+select t_stock.organization_id, t_stock.company_id, t_stock.depot_id,
+       t_stock.product_id, t_stock.batch_id, t_stock.store_type,
+       t_stock.inQuantity,
+       t_stock.outQuantity,
+       t_stock.availableQuantity - ifnull(t_dam.damageQuantity,0) as availableQuantity,
+       ifnull(t_dam.damageQuantity,0) as damageQuantity
+from (
+select t.organization_id, t.company_id, t.depot_id,
+       t.product_id, t.batch_id, t.store_type,
+       sum(t.inQuantity) as inQuantity,
+       sum(t.outQuantity) as outQuantity,
+       sum(t.inQuantity) - sum(t.outQuantity) as availableQuantity
+
+from (
+-- Total out quantity
+select itd.product_id, itd.batch_id, s.store_type,
+    0 as inQuantity, itd.quantity outQuantity, itd.inv_transaction_id,
+    t_out.depot_id, t_out.organization_id, t_out.company_id
+from inv_transaction_details itd
+inner join store s
+        on itd.from_store_id = s.id
+       and itd.is_deleted is false
+       and itd.is_active is true
+
+inner join (
+     select ir.id, ir.depot_id,
+            ir.inv_transaction_id, ir.organization_id, ir.company_id
+     from inv_receive ir where ir.is_deleted is false
+     UNION ALL
+     select it.id, it.from_depot_id as depot_id,
+            it.inv_transaction_id, it.organization_id, it.company_id
+     from inv_transfer it where it.is_deleted is false
+     UNION ALL
+     select idc.id, idc.depot_id,
+            idc.inv_transaction_id, idc.organization_id, idc.company_id
+     from inv_delivery_challan idc where idc.is_deleted is false
+     UNION ALL
+     select sr.id, sr.depot_id,
+            sr.inv_transaction_id, sr.organization_id, sr.company_id
+     from sales_return sr where sr.is_deleted is false
+     UNION ALL
+     select issm.id, issm.depot_id,
+            issm.inv_transaction_id, issm.organization_id, issm.company_id
+     from inter_store_stock_movement issm where issm.is_deleted is false) as t_out
+     on itd.inv_transaction_id = t_out.inv_transaction_id
+
+ UNION ALL
+-- Total in quantity
+select itd.product_id, itd.batch_id, s.store_type,
+itd.quantity inQuantity, 0 as outQuantity, itd.inv_transaction_id,
+t_in.depot_id, t_in.organization_id, t_in.company_id
+from inv_transaction_details itd
+inner join store s
+        on itd.to_store_id = s.id
+       and itd.is_deleted is false
+       and itd.is_active is true
+
+inner join (
+    select ir.id, ir.depot_id,
+        ir.inv_transaction_id, ir.organization_id, ir.company_id
+    from inv_receive ir where ir.is_deleted is false
+    UNION ALL
+    select it.id, it.to_depot_id as depot_id,
+        it.inv_transaction_id, it.organization_id, it.company_id
+    from inv_transfer it where it.is_deleted is false
+    UNION ALL
+    select idc.id, idc.depot_id,
+        idc.inv_transaction_id, idc.organization_id, idc.company_id
+    from inv_delivery_challan idc where idc.is_deleted is false
+    UNION ALL
+    select sr.id, sr.depot_id,
+        sr.inv_transaction_id, sr.organization_id, sr.company_id
+    from sales_return sr where sr.is_deleted is false
+    UNION ALL
+    select issm.id, issm.depot_id,
+        issm.inv_transaction_id, issm.organization_id, issm.company_id
+    from inter_store_stock_movement issm where issm.is_deleted is false) as t_in
+      on itd.inv_transaction_id = t_in.inv_transaction_id) as t
+
+group by t.organization_id, t.company_id, t.depot_id, t.product_id, t.batch_id, t.store_type
+
+) t_stock
+
+left join (
+    select id.organization_id, id.depot_id, id.company_id,
+           idd.product_id, idd.batch_id, s.store_type,
+           sum(idd.quantity) damageQuantity
+
+    from inv_damage id
+    inner join inv_damage_details idd
+            on id.id = idd.inv_damage_id
+           and id.is_deleted is false
+           and id.is_active is true
+           -- and id.approval_status = 'APPROVED'
+    inner join store s on id.store_id = s.id
+    group by id.organization_id, id.depot_id, id.company_id,
+             idd.product_id, idd.batch_id, s.store_type
+) t_dam on t_dam.organization_id = t_stock.organization_id
+and t_dam.company_id = t_stock.company_id
+and t_dam.depot_id = t_stock.depot_id
+and t_dam.product_id = t_stock.product_id
+and t_dam.batch_id = t_stock.batch_id
+and t_dam.store_type = t_stock.store_type;
+
+
+ DELIMITER
+ DROP VIEW IF EXISTS batch_wise_stock_data;
+ DELIMITER
+ create view batch_wise_stock_data as
+ select stock.organization_id, stock.company_id, stock.depot_id, stock.transaction_type,
+ stock.batch_id,stock.product_id, stock.stock_quantity,stock.from_store_id, stock.to_store_id from
+         (select invdet.organization_id, invdet.company_id, invdet.depot_id, invtransdet.transaction_type,
+             invtransdet.batch_id, invtransdet.product_id, sum(invtransdet.quantity) stock_quantity, invtransdet.from_store_id,
+             invtransdet.to_store_id   from(select invr.inv_transaction_id, invr.organization_id,
+             invr.company_id, invr.depot_id from inv_receive invr
+             where invr.is_active is true and invr.is_deleted is false) invdet
+
+                              	inner join
+
+         (select invt.id transactionId, invt.transaction_type, itd.batch_id, itd.product_id, sum(itd.quantity) quantity,
+             itd.from_store_id, itd.to_store_id from inv_transaction invt
+                 inner join inv_transaction_details itd on invt.id = itd.inv_transaction_id
+                 and itd.rate is not null
+                     group by invt.id, invt.transaction_type,itd.batch_id,itd.product_id, itd.from_store_id,
+                     itd.to_store_id) invtransdet on invdet.inv_transaction_id = invtransdet.transactionId
+         group by invdet.organization_id, invdet.company_id, invdet.depot_id, invtransdet.transaction_type,
+                 invtransdet.batch_id,invtransdet.product_id,invtransdet.from_store_id, invtransdet.to_store_id
+
+ 					union all
+
+         select invdet.organization_id, invdet.company_id, invdet.from_depot_id, invtransdet.transaction_type,
+         	invtransdet.batch_id,invtransdet.product_id, sum(invtransdet.quantity), invtransdet.from_store_id, invtransdet.to_store_id
+         from(select invt.inv_transaction_id, invt.organization_id, invt.company_id, invt.from_depot_id
+         from inv_transfer invt where invt.is_active is true and invt.is_deleted is false) invdet
+
+                              	inner join
+
+         (select invt.id transactionId, invt.transaction_type, itd.batch_id,itd.product_id, sum(itd.quantity) quantity,
+             itd.from_store_id, itd.to_store_id from inv_transaction invt inner join inv_transaction_details itd
+             on invt.id = itd.inv_transaction_id and invt.transaction_type = 'TRANSFER_SENT' group by invt.id,
+             invt.transaction_type,itd.batch_id,itd.product_id, itd.from_store_id, itd.to_store_id) invtransdet
+             on invdet.inv_transaction_id = invtransdet.transactionId
+             group by invdet.organization_id, invdet.company_id, invdet.from_depot_id,
+             invtransdet.transaction_type,invtransdet.batch_id,invtransdet.product_id,invtransdet.from_store_id, invtransdet.to_store_id
+
+                              	union all
+
+        select invdet.organization_id, invdet.company_id, invdet.from_depot_id, invtransdet.transaction_type,
+        invtransdet.batch_id,invtransdet.product_id, sum(invtransdet.quantity), invtransdet.from_store_id, invtransdet.to_store_id
+        from(select invt.inv_transaction_id, invt.organization_id, invt.company_id, invt.from_depot_id
+               from inv_transfer invt where invt.is_active is true and invt.is_deleted is false) invdet
+
+                              	inner join
+
+        (select invt.id transactionId, invt.transaction_type, itd.batch_id, itd.product_id, sum(itd.quantity) quantity,
+             itd.from_store_id, concat(NULL) to_store_id from inv_transaction invt inner join inv_transaction_details itd
+             on invt.id = itd.inv_transaction_id  and invt.transaction_type = 'TRANSFER_RECEIVE' group by invt.id,
+             invt.transaction_type,itd.batch_id,itd.product_id, itd.from_store_id, itd.to_store_id) invtransdet
+             on invdet.inv_transaction_id = invtransdet.transactionId
+             group by invdet.organization_id, invdet.company_id, invdet.from_depot_id,
+             invtransdet.transaction_type,invtransdet.batch_id, invtransdet.product_id,invtransdet.from_store_id, invtransdet.to_store_id
+
+                                 union all
+
+        select invdet.organization_id, invdet.company_id, invdet.to_depot_id, invtransdet.transaction_type,
+        invtransdet.batch_id,invtransdet.product_id, sum(invtransdet.quantity), invtransdet.from_store_id, invtransdet.to_store_id
+        from(select invt.inv_transaction_id, invt.organization_id, invt.company_id, invt.to_depot_id
+                   from inv_transfer invt where invt.is_active is true and invt.is_deleted is false) invdet
+
+                              	inner join
+
+        (select invt.id transactionId, invt.transaction_type, itd.batch_id, itd.product_id, sum(itd.quantity) quantity,
+             concat(NULL) from_store_id, itd.to_store_id from inv_transaction invt inner join inv_transaction_details itd
+             on invt.id = itd.inv_transaction_id and invt.transaction_type = 'TRANSFER_RECEIVE' group by invt.id,
+             invt.transaction_type,itd.batch_id,itd.product_id, itd.from_store_id, itd.to_store_id) invtransdet
+             on invdet.inv_transaction_id = invtransdet.transactionId
+             group by invdet.organization_id, invdet.company_id, invdet.to_depot_id, invtransdet.transaction_type,
+             invtransdet.batch_id, invtransdet.product_id,invtransdet.from_store_id, invtransdet.to_store_id
+
+                              	union all
+
+        select invdet.organization_id, invdet.company_id, invdet.depot_id, invtransdet.transaction_type,
+             invtransdet.batch_id,invtransdet.product_id, sum(invtransdet.quantity), invtransdet.from_store_id, invtransdet.to_store_id
+             from(select invdc.inv_transaction_id, invdc.organization_id, invdc.company_id, invdc.depot_id
+                              	from inv_delivery_challan invdc
+                              	where invdc.is_active is true and invdc.is_deleted is false) invdet
+
+                              	inner join
+
+             (select invt.id transactionId, invt.transaction_type, itd.batch_id,itd.product_id, sum(itd.quantity) quantity,
+                 itd.from_store_id, itd.to_store_id from inv_transaction invt inner join inv_transaction_details itd
+                 on invt.id = itd.inv_transaction_id group by invt.id, invt.transaction_type,itd.batch_id,itd.product_id,
+                 itd.from_store_id, itd.to_store_id) invtransdet on invdet.inv_transaction_id = invtransdet.transactionId
+                 group by invdet.organization_id, invdet.company_id, invdet.depot_id, invtransdet.transaction_type,
+                 invtransdet.batch_id,invtransdet.product_id,invtransdet.from_store_id, invtransdet.to_store_id
+
+                              	union all
+
+        select invdet.organization_id, invdet.company_id, invdet.depot_id, invtransdet.transaction_type,
+             invtransdet.batch_id,invtransdet.product_id, sum(invtransdet.quantity), invtransdet.from_store_id, invtransdet.to_store_id
+             from(select sr.inv_transaction_id, sr.organization_id, sr.company_id, sr.depot_id
+                     from sales_return sr where sr.is_active is true and sr.is_deleted is false) invdet
+
+                              	inner join
+
+        (select invt.id transactionId, invt.transaction_type, itd.batch_id, itd.product_id, sum(itd.quantity) quantity,
+             itd.from_store_id, itd.to_store_id from inv_transaction invt inner join inv_transaction_details itd
+             on invt.id = itd.inv_transaction_id group by invt.id, invt.transaction_type,itd.batch_id,itd.product_id,
+             itd.from_store_id, itd.to_store_id) invtransdet on invdet.inv_transaction_id = invtransdet.transactionId
+             group by invdet.organization_id, invdet.company_id, invdet.depot_id,invtransdet.transaction_type,
+             invtransdet.batch_id,invtransdet.product_id,invtransdet.from_store_id, invtransdet.to_store_id
+
+                              	union all
+
+        select invdet.organization_id, invdet.company_id, invdet.depot_id, invtransdet.transaction_type,
+             invtransdet.batch_id,invtransdet.product_id, sum(invtransdet.quantity), invtransdet.from_store_id, invtransdet.to_store_id
+             from(select issm.inv_transaction_id, issm.organization_id, issm.company_id, issm.depot_id
+                     from inter_store_stock_movement issm
+                           where issm.is_active is true and issm.is_deleted is false) invdet
+
+                              	inner join
+
+        (select invt.id transactionId, invt.transaction_type, itd.batch_id, itd.product_id, sum(itd.quantity) quantity,
+             itd.from_store_id, itd.to_store_id from inv_transaction invt inner join inv_transaction_details itd
+             on invt.id = itd.inv_transaction_id group by invt.id, invt.transaction_type,itd.batch_id,itd.product_id,
+             itd.from_store_id, itd.to_store_id) invtransdet on invdet.inv_transaction_id = invtransdet.transactionId
+             group by invdet.organization_id, invdet.company_id, invdet.depot_id, invtransdet.transaction_type,
+             invtransdet.batch_id,invtransdet.product_id,invtransdet.from_store_id, invtransdet.to_store_id
+        ) stock;
+
+         DELIMITER
+         DROP VIEW IF EXISTS batch_wise_stock_details_data;
+         DELIMITER
+
+         create view batch_wise_stock_details_data as
+         select temp.organization_id, temp.company_id, temp.batch_id, temp.product_id, temp.depot_id,
+         max(case when temp.store_type = 'REGULAR' then (available_stock) end) as REGULAR,
+         max(case when temp.store_type = 'QUARANTINE' then (available_stock) end) as QUARANTINE,
+         max(case when temp.store_type = 'IN_TRANSIT' then (available_stock) end) as IN_TRANSIT,
+         max(case when temp.store_type = 'RESTRICTED' then (available_stock) end) as RESTRICTED from
+
+         (select inwarprod.organization_id, inwarprod.company_id, inwarprod.batch_id, inwarprod.product_id,
+            inwarprod.depot_id, inwarprod.to_store_id store_id,
+             (inwarprod.inwards_quantity - ifnull(outwarprod.outwards_quantity,0)) available_stock, inwarprod.store_type
+                                        from
+         (select bwsd.organization_id, bwsd.batch_id,bwsd.product_id, sum(bwsd.stock_quantity) inwards_quantity,
+                bwsd.to_store_id, bwsd.depot_id, bwsd.company_id,st.store_type from batch_wise_stock_data bwsd
+         inner join store st on bwsd.to_store_id = st.id
+         and bwsd.to_store_id=(select id from store where store_type='REGULAR' and is_active is true and is_deleted is false
+
+         ) group by bwsd.organization_id, bwsd.company_id,bwsd.depot_id, bwsd.to_store_id, bwsd.batch_id,
+                bwsd.product_id,st.store_type) inwarprod
+         		                left join
+         (select bwsd.organization_id, bwsd.batch_id,bwsd.product_id,sum(bwsd.stock_quantity) outwards_quantity,
+                bwsd.from_store_id, bwsd.depot_id, bwsd.company_id, st.store_type  from batch_wise_stock_data bwsd
+         inner join store st on bwsd.from_store_id = st.id
+         and bwsd.from_store_id=(select id from store where store_type='REGULAR' and is_active is true
+         and is_deleted is false) group by bwsd.organization_id, bwsd.company_id,bwsd.depot_id, bwsd.from_store_id,
+         bwsd.batch_id,bwsd.product_id) outwarprod
+         on inwarprod.batch_id = outwarprod.batch_id and inwarprod.product_id = outwarprod.product_id
+         and inwarprod.to_store_id = outwarprod.from_store_id
+         and inwarprod.depot_id = outwarprod.depot_id and inwarprod.company_id = outwarprod.company_id
+         and inwarprod.organization_id = outwarprod.organization_id
+
+         							union all
+
+         select inwarprod.organization_id,inwarprod.company_id, inwarprod.batch_id, inwarprod.product_id,
+            inwarprod.depot_id, inwarprod.to_store_id store_id,
+         (inwarprod.inwards_quantity - ifnull(outwarprod.outwards_quantity,0)) available_stock, inwarprod.store_type from
+
+         (select bwsd.organization_id, bwsd.batch_id,bwsd.product_id, sum(bwsd.stock_quantity) inwards_quantity,
+            bwsd.to_store_id, bwsd.depot_id, bwsd.company_id,st.store_type from batch_wise_stock_data bwsd
+                            inner join store st on bwsd.to_store_id = st.id
+         and bwsd.to_store_id=(select id from store where store_type='IN_TRANSIT' and is_active is true and is_deleted is false
+
+         ) group by bwsd.organization_id, bwsd.company_id,bwsd.depot_id, bwsd.to_store_id,bwsd.batch_id,
+                bwsd.product_id,st.store_type) inwarprod
+         		                        left join
+         (select bwsd.organization_id, bwsd.batch_id,bwsd.product_id,sum(bwsd.stock_quantity) outwards_quantity,
+                    bwsd.from_store_id, bwsd.depot_id, bwsd.company_id,
+                    st.store_type  from batch_wise_stock_data bwsd
+                         inner join store st on bwsd.from_store_id = st.id
+         and bwsd.from_store_id=(select id from store where store_type='IN_TRANSIT' and is_active is true and is_deleted is false)
+         group by bwsd.organization_id, bwsd.company_id,bwsd.depot_id, bwsd.from_store_id, bwsd.batch_id,bwsd.product_id) outwarprod
+         on inwarprod.batch_id = outwarprod.batch_id and inwarprod.product_id = outwarprod.product_id
+         and inwarprod.to_store_id = outwarprod.from_store_id
+         and inwarprod.depot_id = outwarprod.depot_id and inwarprod.company_id = outwarprod.company_id
+         and inwarprod.organization_id = outwarprod.organization_id
+
+         							union all
+
+         select inwarprod.organization_id,inwarprod.company_id, inwarprod.batch_id, inwarprod.product_id,
+            inwarprod.depot_id, inwarprod.to_store_id store_id,
+         (inwarprod.inwards_quantity - ifnull(outwarprod.outwards_quantity,0)) available_stock, inwarprod.store_type from
+
+         (select bwsd.organization_id, bwsd.batch_id,bwsd.product_id, sum(bwsd.stock_quantity) inwards_quantity,
+            bwsd.to_store_id, bwsd.depot_id, bwsd.company_id,st.store_type from batch_wise_stock_data bwsd
+                    inner join store st on bwsd.to_store_id = st.id
+         and bwsd.to_store_id=(select id from store where store_type='QUARANTINE' and is_active is true and is_deleted is false
+
+         ) group by bwsd.organization_id,bwsd.company_id,bwsd.depot_id, bwsd.to_store_id,bwsd.batch_id,
+                    bwsd.product_id,st.store_type) inwarprod
+         		left join
+         (select bwsd.organization_id, bwsd.batch_id,bwsd.product_id,sum(bwsd.stock_quantity) outwards_quantity,
+                    bwsd.from_store_id, bwsd.depot_id, bwsd.company_id, st.store_type  from batch_wise_stock_data bwsd
+         inner join store st on bwsd.from_store_id = st.id
+         and bwsd.from_store_id=(select id from store where store_type='QUARANTINE' and is_active is true and is_deleted is false)
+         group by bwsd.organization_id,bwsd.company_id,bwsd.depot_id, bwsd.from_store_id,bwsd.batch_id, bwsd.product_id) outwarprod
+         on inwarprod.batch_id = outwarprod.batch_id and inwarprod.product_id = outwarprod.product_id
+         and inwarprod.to_store_id = outwarprod.from_store_id
+         and inwarprod.depot_id = outwarprod.depot_id and inwarprod.company_id = outwarprod.company_id
+         and inwarprod.organization_id = outwarprod.organization_id
+
+         							 union all
+
+         select inwarprod.organization_id,inwarprod.company_id, inwarprod.batch_id, inwarprod.product_id,
+            inwarprod.depot_id, inwarprod.to_store_id,
+         (inwarprod.inwards_quantity - ifnull(outwarprod.outwards_quantity,0)) available_stock, inwarprod.store_type from
+
+         (select bwsd.organization_id, bwsd.batch_id,bwsd.product_id, sum(bwsd.stock_quantity) inwards_quantity,
+         bwsd.to_store_id, bwsd.depot_id, bwsd.company_id,st.store_type from batch_wise_stock_data bwsd
+         inner join store st on bwsd.to_store_id = st.id
+         and bwsd.to_store_id=(select id from store where store_type='RESTRICTED' and is_active is true and is_deleted is false
+
+         ) group by bwsd.organization_id, bwsd.company_id,bwsd.depot_id, bwsd.to_store_id,bwsd.batch_id,
+                bwsd.product_id,st.store_type) inwarprod
+         		left join
+         (select bwsd.organization_id, bwsd.batch_id, bwsd.product_id,sum(bwsd.stock_quantity) outwards_quantity,
+                bwsd.from_store_id, bwsd.depot_id, bwsd.company_id,
+                st.store_type  from batch_wise_stock_data bwsd
+         inner join store st on bwsd.from_store_id = st.id
+         and bwsd.from_store_id=(select id from store where store_type='RESTRICTED' and is_active is true and is_deleted is false)
+         group by bwsd.organization_id, bwsd.company_id,bwsd.depot_id, bwsd.from_store_id,bwsd.batch_id, bwsd.product_id) outwarprod
+         on inwarprod.batch_id = outwarprod.batch_id and inwarprod.product_id = outwarprod.product_id
+         and inwarprod.to_store_id = outwarprod.from_store_id
+         and inwarprod.depot_id = outwarprod.depot_id and inwarprod.company_id = outwarprod.company_id
+         and inwarprod.organization_id = outwarprod.organization_id
+
+         ) temp group by temp.organization_id, temp.company_id, temp.batch_id, temp.product_id, temp.depot_id;
+
+          DELIMITER
+              DROP VIEW IF EXISTS qc_stock;
+          DELIMITER
+          create view qc_stock as select qa_details.company_id, qa_details.depot_id, qa_details.store_type,
+          qa_details.store_id, qa_details.batch_id, qa_details.product_id,qa_details.qa_status, qa_details.quantity,
+          (case  when qa_details.store_type ="QUARANTINE" and qa_details.qa_status="PASS"
+                                            then ifnull(bwsds.stock_quantity,0)
+                 when qa_details.store_type ="QUARANTINE" and qa_details.qa_status="FAILED" then ifnull(bwsds.stock_quantity,0)
+                 when qa_details.store_type ="RESTRICTED" and qa_details.qa_status="FAILED"
+                                             then ifnull(bwsds.stock_quantity,0)
+                 when qa_details.store_type ="RESTRICTED" and qa_details.qa_status="PASS"
+                                              then 0  end) outward_quantity ,
+
+          (qa_details.quantity - ifnull((case  when qa_details.store_type ="QUARANTINE" and qa_details.qa_status="PASS"
+                                                        then ifnull(bwsds.stock_quantity,0)
+                                               when qa_details.store_type ="QUARANTINE" and qa_details.qa_status="FAILED"
+                                                        then ifnull(bwsds.stock_quantity,0)
+                                               when qa_details.store_type ="RESTRICTED" and qa_details.qa_status="FAILED"
+                                                        then ifnull(bwsds.stock_quantity,0)
+                                               when qa_details.store_type ="RESTRICTED" and qa_details.qa_status="PASS"
+                                                        then 0  end),0)) available_qc_quantity
+          from (select qi.company_id, qid.batch_id,qid.product_id,qi.depot_id,qi.store_id,qid.qa_status, st.store_type,
+                      sum(qid.quantity) quantity from quality_inspection qi
+                      inner join quality_inspection_details qid on qi.id = qid.quality_inspection_id
+                      inner join store st on qi.store_id = st.id and st.is_active is true and st.is_deleted is false
+                      group by qi.company_id, qid.batch_id,qid.product_id, qi.depot_id,qi.store_id,qid.qa_status
+                      ) qa_details
+
+                      left join
+          (select bwsd.company_id, bwsd.batch_id, bwsd.product_id,bwsd.depot_id,bwsd.from_store_id,
+             (case when st.store_type ="QUARANTINE" or st.store_type = "REGULAR" or st.store_type="IN_TRANSIT"
+                    then 'PASS' else 'FAILED' end) qa_status, sum(bwsd.stock_quantity) stock_quantity
+                     from batch_wise_stock_data bwsd
+                 inner join store st on bwsd.to_store_id = st.id and st.is_active is true and st.is_deleted is false
+                       group by bwsd.company_id,bwsd.batch_id, bwsd.product_id,bwsd.depot_id,
+                          bwsd.from_store_id,st.store_type) bwsds on qa_details.company_id = bwsds.company_id
+             and qa_details.depot_id = bwsds.depot_id
+             and qa_details.product_id = bwsds.product_id and qa_details.store_id = bwsds.from_store_id
+             and qa_details.batch_id = bwsds.batch_id and qa_details.qa_status = bwsds.qa_status COLLATE utf8mb4_general_ci;
+
+
+DELIMITER
+DROP VIEW IF EXISTS batch_receive_stock;
+DELIMITER
+create view batch_receive_stock as
+select bd.product_id, b.id, b.batch_no, b.quantity batch_quantity,
+b.quantity-ifnull(receive.receive_quantity, 0) as receivable_quantity,
+ifnull(receive.receive_quantity, 0) receive_quantity
+from batch b
+inner join batch_details bd on b.id = bd.batch_id
+left join (select product_id, batch_id, sum(ifnull(itd.quantity, 0)) as receive_quantity from
+inv_transaction_details itd
+inner join inv_transaction it on it.id = itd.inv_transaction_id
+and it.transaction_type = 'PRODUCTION_RECEIVE'
+group by product_id, itd.batch_id
+) receive  on bd.product_id = receive.product_id and bd.batch_id = receive.batch_id
+group by bd.product_id, b.id;
+
+DELIMITER
+DROP VIEW IF EXISTS product_production_receivable;
+DELIMITER
+create view product_production_receivable as
+select p.id product_id,
+ifnull(sum(b.quantity), 0) production_quantity,
+ifnull(receive.receive_quantity, 0) receive_quantity,
+ifnull(sum(b.quantity), 0) - ifnull(receive.receive_quantity, 0) as receivable_quantity
+from product p
+inner join batch_details bd on p.id = bd.product_id
+inner join batch b on b.id = bd.batch_id
+left join (select product_id, sum(ifnull(itd.quantity, 0)) as receive_quantity from
+inv_transaction_details itd
+inner join inv_transaction it on it.id = itd.inv_transaction_id
+and it.transaction_type = 'PRODUCTION_RECEIVE'
+group by product_id
+) receive  on bd.product_id = receive.product_id
+group by bd.product_id
+
+
+DELIMITER
+DROP VIEW IF EXISTS warehouse_stock_movement_batch;
+DELIMITER
+CREATE VIEW warehouse_stock_movement_batch as
+select sdd.organization_id, sdd.company_id, sdd.depot_id, sdd.transaction_date,
+sdd.transaction_type, p.product_category_id, sdd.product_id, sdd.batch_id, sdd.batch_no,
+sdd.quantity,sdd.rate,sdd.from_store_id, sdd.to_store_id
+                                from
+
+(select invdet.organization_id, invdet.company_id, invdet.depot_id, invtransdet.transaction_date,invtransdet.transaction_type,
+invtransdet.product_id, invtransdet.batch_id, invtransdet.batch_no, (invtransdet.quantity),invtransdet.rate, invtransdet.from_store_id,
+invtransdet.to_store_id   from(select invr.inv_transaction_id, invr.organization_id, invr.company_id, invr.depot_id
+from inv_receive invr
+where invr.is_active is true and invr.is_deleted is false
+and depot_id in(select id from depot where is_central_warehouse is true)) invdet
+
+                             	inner join
+
+(select invt.id transactionId, invt.transaction_date, invt.transaction_type, itd.product_id, itd.batch_id, bch.batch_no,
+sum(itd.quantity) quantity, sum(itd.rate) rate, itd.from_store_id, itd.to_store_id
+from inv_transaction invt inner join inv_transaction_details itd
+on invt.id = itd.inv_transaction_id and itd.rate is not null
+and itd.to_store_id in(select id from store where store_type in('REGULAR','QUARANTINE'))
+inner join batch bch on bch.id = itd.batch_id
+group by invt.id, invt.transaction_type,itd.product_id,itd.batch_id, itd.from_store_id, itd.to_store_id) invtransdet
+on invdet.inv_transaction_id = invtransdet.transactionId
+
+
+                                union all
+
+select invdet.organization_id, invdet.company_id, invdet.from_depot_id depot_id, invtransdet.transaction_date,invtransdet.transaction_type,
+invtransdet.product_id, invtransdet.batch_id, invtransdet.batch_no, (invtransdet.quantity), invtransdet.rate, invtransdet.from_store_id, invtransdet.to_store_id
+from(select idc.inv_transaction_id, idc.organization_id, idc.company_id, idc.from_depot_id
+from inv_transfer idc where idc.is_active is true and idc.is_deleted is false
+) invdet
+
+                                inner join
+
+(select invt.id transactionId, invt.transaction_date, invt.transaction_type, itd.product_id, itd.batch_id, bch.batch_no, (itd.quantity) quantity,
+(itd.rate) rate, itd.from_store_id, itd.to_store_id from inv_transaction invt
+inner join
+inv_transaction_details itd on invt.id = itd.inv_transaction_id
+and invt.transaction_type='TRANSFER_SENT'
+inner join batch bch on bch.id = itd.batch_id) invtransdet on invdet.inv_transaction_id = invtransdet.transactionId
+
+                                union all
+
+select invdet.organization_id, invdet.company_id, invdet.to_depot_id depot_id, invtransdet.transaction_date,invtransdet.transaction_type,
+invtransdet.product_id, invtransdet.batch_id, invtransdet.batch_no, (invtransdet.quantity), invtransdet.rate, invtransdet.from_store_id, invtransdet.to_store_id
+from(select idc.inv_transaction_id, idc.organization_id, idc.company_id, idc.to_depot_id
+from inv_transfer idc where idc.is_active is true and idc.is_deleted is false
+) invdet
+
+                                inner join
+
+(select invt.id transactionId, invt.transaction_date, invt.transaction_type, itd.product_id, itd.batch_id, bch.batch_no, (itd.quantity) quantity,
+(itd.rate) rate, itd.from_store_id, itd.to_store_id from inv_transaction invt
+inner join
+inv_transaction_details itd on invt.id = itd.inv_transaction_id
+and invt.transaction_type='TRANSFER_RECEIVE'
+inner join batch bch on bch.id = itd.batch_id) invtransdet on invdet.inv_transaction_id = invtransdet.transactionId
+
+				                union all
+
+select invdet.organization_id, invdet.company_id, invdet.depot_id, invtransdet.transaction_date,invtransdet.transaction_type,
+invtransdet.product_id, invtransdet.batch_id, invtransdet.batch_no, (invtransdet.quantity),
+invtransdet.rate, invtransdet.from_store_id, invtransdet.to_store_id
+from(select idc.inv_transaction_id, idc.organization_id, idc.company_id, idc.depot_id
+from inv_delivery_challan idc where idc.is_active is true and idc.is_deleted is false
+) invdet
+
+                                inner join
+
+(select invt.id transactionId, invt.transaction_date, invt.transaction_type, itd.product_id, itd.batch_id, bch.batch_no,
+(itd.quantity) quantity, (itd.rate) rate, itd.from_store_id, itd.to_store_id from inv_transaction invt
+inner join
+inv_transaction_details itd on invt.id = itd.inv_transaction_id
+and invt.transaction_type='DELIVERY_CHALLAN'
+inner join batch bch on bch.id = itd.batch_id) invtransdet on invdet.inv_transaction_id = invtransdet.transactionId
+
+     				union all
+
+select invdet.organization_id, invdet.company_id, invdet.depot_id, invtransdet.transaction_date,invtransdet.transaction_type,
+invtransdet.product_id, invtransdet.batch_id, invtransdet.batch_no, (invtransdet.quantity), invtransdet.rate,
+invtransdet.from_store_id, invtransdet.to_store_id
+from(select sr.inv_transaction_id, sr.organization_id, sr.company_id, sr.depot_id
+from sales_return sr where sr.is_active is true and sr.is_deleted is false
+) invdet
+
+                            inner join
+
+(select invt.id transactionId, invt.transaction_date, invt.transaction_type, itd.product_id, itd.batch_id, bch.batch_no,
+(itd.quantity) quantity, (itd.rate) rate, itd.from_store_id, itd.to_store_id from inv_transaction invt
+inner join
+inv_transaction_details itd on invt.id = itd.inv_transaction_id
+and invt.transaction_type='RETURN'
+inner join batch bch on bch.id = itd.batch_id
+) invtransdet on invdet.inv_transaction_id = invtransdet.transactionId
+
+) as sdd  inner join product p on p.id=sdd.product_id
+
+#view for distributor budget
+DELIMITER
+DROP VIEW IF EXISTS distributor_budget;
+DELIMITER
+create view distributor_budget as
+select budget.*, budget_d.distributor_id, budget_d.month,
+sum(ifnull(budget_d.quantity, 0)) budgetQuantity,
+sum(ifnull((budget_d.quantity * budget_d.product_trade_price), 0)) budgetAmount
+from sales_budget budget
+inner join sales_budget_details budget_d on budget.id = budget_d.sales_budget_id
+group by budget.id, budget_d.distributor_id, budget_d.month;
+
+#view for collection distributor budget
+DELIMITER
+DROP VIEW IF EXISTS collection_distributor_budget;
+DELIMITER
+create view collection_distributor_budget as
+select budget.*, budget_d.distributor_id, budget_d.month,
+sum(ifnull(budget_d.quantity, 0)) budgetQuantity,
+sum(ifnull(budget_d.collection_budget_amount, 0)) budgetAmount
+from collection_budget budget
+inner join collection_budget_details budget_d on budget.id = budget_d.collection_budget_id
+group by budget.id, budget_d.distributor_id, budget_d.month;
+
+
+DELIMITER
+DROP VIEW IF EXISTS warehouse_stock_movement_all;
+DELIMITER
+CREATE VIEW warehouse_stock_movement_all as
+select sdd.organization_id, sdd.company_id, sdd.depot_id, sdd.transaction_date,
+sdd.transaction_type, p.product_category_id, sdd.product_id, sdd.batch_id, sdd.batch_no,
+sdd.quantity,sdd.rate,sdd.from_store_id, sdd.to_store_id
+                                from
+(select invdet.organization_id, invdet.company_id, invdet.depot_id,
+invtransdet.transaction_date,invtransdet.transaction_type,
+invtransdet.product_id, invtransdet.batch_id, invtransdet.batch_no,
+(invtransdet.quantity),invtransdet.rate, invtransdet.from_store_id,
+invtransdet.to_store_id   from(select invr.inv_transaction_id, invr.organization_id,
+invr.company_id, invr.depot_id
+from inv_receive invr
+where invr.is_active is true and invr.is_deleted is false
+and depot_id in(select id from depot where is_central_warehouse is true)) invdet
+
+                             	inner join
+
+(select invt.id transactionId, invt.transaction_date, invt.transaction_type,
+itd.product_id, itd.batch_id, bch.batch_no,
+sum(itd.quantity) quantity, sum(itd.rate) rate, itd.from_store_id, itd.to_store_id
+from inv_transaction invt inner join inv_transaction_details itd
+on invt.id = itd.inv_transaction_id and itd.rate is not null
+and itd.to_store_id in(select id from store where store_type in('REGULAR','QUARANTINE'))
+inner join batch bch on bch.id = itd.batch_id
+group by invt.id, invt.transaction_type,itd.product_id,itd.batch_id,
+itd.from_store_id, itd.to_store_id) invtransdet
+on invdet.inv_transaction_id = invtransdet.transactionId
+
+                                union all
+
+select invdet.organization_id, invdet.company_id, invdet.from_depot_id depot_id,
+invtransdet.transaction_date,invtransdet.transaction_type,
+invtransdet.product_id, invtransdet.batch_id, invtransdet.batch_no, (invtransdet.quantity),
+invtransdet.rate, invtransdet.from_store_id, invtransdet.to_store_id
+from(select idc.inv_transaction_id, idc.organization_id, idc.company_id, idc.from_depot_id
+from inv_transfer idc where idc.is_active is true and idc.is_deleted is false
+) invdet
+
+                                inner join
+
+(select invt.id transactionId, invt.transaction_date, invt.transaction_type,
+itd.product_id, itd.batch_id, bch.batch_no, (itd.quantity) quantity,
+(itd.rate) rate, itd.from_store_id, itd.to_store_id from inv_transaction invt
+inner join
+inv_transaction_details itd on invt.id = itd.inv_transaction_id
+and invt.transaction_type='TRANSFER_SENT'
+inner join batch bch on bch.id = itd.batch_id) invtransdet
+on invdet.inv_transaction_id = invtransdet.transactionId
+
+                                union all
+
+select invdet.organization_id, invdet.company_id, invdet.to_depot_id depot_id,
+invtransdet.transaction_date,invtransdet.transaction_type,
+invtransdet.product_id, invtransdet.batch_id, invtransdet.batch_no, (invtransdet.quantity),
+invtransdet.rate, invtransdet.from_store_id, invtransdet.to_store_id
+from(select idc.inv_transaction_id, idc.organization_id, idc.company_id, idc.to_depot_id
+from inv_transfer idc where idc.is_active is true and idc.is_deleted is false
+) invdet
+
+                                inner join
+
+(select invt.id transactionId, invt.transaction_date, invt.transaction_type,
+itd.product_id, itd.batch_id, bch.batch_no, (itd.quantity) quantity,
+(itd.rate) rate, itd.from_store_id, itd.to_store_id from inv_transaction invt
+inner join
+inv_transaction_details itd on invt.id = itd.inv_transaction_id
+and invt.transaction_type='TRANSFER_RECEIVE'
+inner join batch bch on bch.id = itd.batch_id) invtransdet on invdet.inv_transaction_id = invtransdet.transactionId
+
+				                union all
+
+select invdet.organization_id, invdet.company_id, invdet.depot_id, invchallandet.transaction_date,
+invchallandet.transaction_type, invchallandet.product_id, invchallandet.batch_id,
+invchallandet.batch_no, (invchallandet.quantity), invchallandet.rate,
+invchallandet.from_store_id, invchallandet.to_store_id
+from(select idc.inv_transaction_id, idc.organization_id, idc.company_id, idc.depot_id
+from inv_delivery_challan idc where idc.is_active is true and idc.is_deleted is false
+) invdet
+
+                                inner join
+
+(select invt.id transactionId, invt.transaction_date, invt.transaction_type,
+itd.product_id, itd.batch_id, bch.batch_no, (itd.quantity) quantity, (itd.rate) rate,
+itd.from_store_id, itd.to_store_id from inv_transaction invt
+inner join
+inv_transaction_details itd on invt.id = itd.inv_transaction_id
+and invt.transaction_type='DELIVERY_CHALLAN'
+inner join batch bch on bch.id = itd.batch_id) invchallandet on invdet.inv_transaction_id = invchallandet.transactionId
+
+     				union all
+
+select invdet.organization_id, invdet.company_id, invdet.depot_id, invreturndet.transaction_date,invreturndet.transaction_type,
+invreturndet.product_id, invreturndet.batch_id, invreturndet.batch_no, (invreturndet.quantity), invreturndet.rate,
+invreturndet.from_store_id, invreturndet.to_store_id
+from(select sr.inv_transaction_id, sr.organization_id, sr.company_id, sr.depot_id
+from sales_return sr where sr.is_active is true and sr.is_deleted is false
+) invdet
+
+                            inner join
+
+(select invt.id transactionId, invt.transaction_date, invt.transaction_type, itd.product_id, itd.batch_id, bch.batch_no,
+(itd.quantity) quantity, (itd.rate) rate, itd.from_store_id, itd.to_store_id from inv_transaction invt
+inner join
+inv_transaction_details itd on invt.id = itd.inv_transaction_id
+and invt.transaction_type='RETURN'
+inner join batch bch on bch.id = itd.batch_id
+) invreturndet on invdet.inv_transaction_id = invreturndet.transactionId
+
+				                union all
+
+select invdet.organization_id, invdet.company_id, invdet.depot_id,
+storemovedet.transaction_date, storemovedet.transaction_type,
+storemovedet.product_id, storemovedet.batch_id, storemovedet.batch_no, (storemovedet.quantity),
+storemovedet.rate, storemovedet.from_store_id, storemovedet.to_store_id
+from(select idc.inv_transaction_id, idc.organization_id, idc.company_id, idc.depot_id
+from inter_store_stock_movement idc where idc.is_active is true and idc.is_deleted is false
+) invdet
+
+                                inner join
+
+(select invt.id transactionId, invt.transaction_date, invt.transaction_type,
+itd.product_id, itd.batch_id, bch.batch_no, (itd.quantity) quantity,
+(itd.rate) rate, itd.from_store_id, itd.to_store_id from inv_transaction invt
+inner join
+inv_transaction_details itd on invt.id = itd.inv_transaction_id
+and invt.transaction_type='INTER_STORE_MOVEMENT'
+inner join batch bch on bch.id = itd.batch_id) storemovedet on invdet.inv_transaction_id = storemovedet.transactionId
+
+) as sdd  inner join product p on p.id=sdd.product_id
+
+
+
+
+
+

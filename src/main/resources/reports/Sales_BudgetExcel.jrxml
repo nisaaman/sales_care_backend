@@ -1,0 +1,807 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Created with Jaspersoft Studio version 6.20.0.final using JasperReports Library version 6.20.0-2bc7ab61c56f459e8176eb05c7705e145cd400ad  -->
+<jasperReport xmlns="http://jasperreports.sourceforge.net/jasperreports" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://jasperreports.sourceforge.net/jasperreports http://jasperreports.sourceforge.net/xsd/jasperreport.xsd" name="Sales_Budget" pageWidth="1200" pageHeight="612" orientation="Landscape" whenNoDataType="AllSectionsNoDetail" columnWidth="1200" leftMargin="0" rightMargin="0" topMargin="0" bottomMargin="0" isIgnorePagination="true" uuid="625562ed-6e6f-48c3-9f3b-b4107d1a179b">
+	<property name="com.jaspersoft.studio.data.sql.tables" value=""/>
+	<property name="com.jaspersoft.studio.data.defaultdataadapter" value="SNC"/>
+	<property name="com.jaspersoft.studio.unit." value="pixel"/>
+	<property name="com.jaspersoft.studio.unit.pageHeight" value="pixel"/>
+	<property name="com.jaspersoft.studio.unit.pageWidth" value="pixel"/>
+	<property name="com.jaspersoft.studio.unit.topMargin" value="pixel"/>
+	<property name="com.jaspersoft.studio.unit.bottomMargin" value="pixel"/>
+	<property name="com.jaspersoft.studio.unit.leftMargin" value="pixel"/>
+	<property name="com.jaspersoft.studio.unit.rightMargin" value="pixel"/>
+	<property name="com.jaspersoft.studio.unit.columnWidth" value="pixel"/>
+	<property name="com.jaspersoft.studio.unit.columnSpacing" value="pixel"/>
+	<style name="Crosstab 1_CH" mode="Opaque" backcolor="#F0F8FF">
+		<box>
+			<pen lineWidth="0.5" lineColor="#000000"/>
+			<topPen lineWidth="0.5" lineColor="#000000"/>
+			<leftPen lineWidth="0.5" lineColor="#000000"/>
+			<bottomPen lineWidth="0.5" lineColor="#000000"/>
+			<rightPen lineWidth="0.5" lineColor="#000000"/>
+		</box>
+	</style>
+	<style name="Crosstab 1_CG" mode="Opaque" backcolor="#BFE1FF">
+		<box>
+			<pen lineWidth="0.5" lineColor="#000000"/>
+			<topPen lineWidth="0.5" lineColor="#000000"/>
+			<leftPen lineWidth="0.5" lineColor="#000000"/>
+			<bottomPen lineWidth="0.5" lineColor="#000000"/>
+			<rightPen lineWidth="0.5" lineColor="#000000"/>
+		</box>
+	</style>
+	<style name="Crosstab 1_CT" mode="Opaque" backcolor="#005FB3">
+		<box>
+			<pen lineWidth="0.5" lineColor="#000000"/>
+			<topPen lineWidth="0.5" lineColor="#000000"/>
+			<leftPen lineWidth="0.5" lineColor="#000000"/>
+			<bottomPen lineWidth="0.5" lineColor="#000000"/>
+			<rightPen lineWidth="0.5" lineColor="#000000"/>
+		</box>
+	</style>
+	<style name="Crosstab 1_CD" mode="Opaque" backcolor="#FFFFFF">
+		<box>
+			<pen lineWidth="0.5" lineColor="#000000"/>
+			<topPen lineWidth="0.5" lineColor="#000000"/>
+			<leftPen lineWidth="0.5" lineColor="#000000"/>
+			<bottomPen lineWidth="0.5" lineColor="#000000"/>
+			<rightPen lineWidth="0.5" lineColor="#000000"/>
+		</box>
+	</style>
+	<parameter name="companyName" class="java.lang.String"/>
+	<parameter name="address" class="java.lang.String"/>
+	<parameter name="budgetPeriod" class="java.lang.String"/>
+	<parameter name="distributors" class="java.util.List"/>
+	<parameter name="salesOfficers" class="java.util.List"/>
+	<parameter name="locations" class="java.util.List"/>
+	<parameter name="fromMonthId" class="java.lang.Integer"/>
+	<parameter name="toMonthId" class="java.lang.Integer"/>
+	<parameter name="companyId" class="java.lang.Long"/>
+	<parameter name="accountingYearId" class="java.lang.Long"/>
+	<parameter name="fromMonth" class="java.lang.String"/>
+	<parameter name="toMonth" class="java.lang.String"/>
+	<parameter name="companyLogo" class="java.io.InputStream"/>
+	<parameter name="printedBy" class="java.lang.String"/>
+	<parameter name="printedByDesignation" class="java.lang.String"/>
+	<parameter name="dateHeader" class="java.lang.String"/>
+	<parameter name="companyAddress" class="java.lang.String"/>
+	<parameter name="productOwner" class="java.lang.String"/>
+	<queryString language="SQL">
+		<![CDATA[select lht.*, budget_details.* from 
+  
+(select lmm.location_id,
+(case when target_type = "SALES_OFFICER" then sbd.sales_officer_id 
+      when target_type = "DISTRIBUTOR" then disSalesMap.sales_officer_id end) as salesOfficerId, 
+au.name as Sales_Officer, concat(prod.name, " ", prod.item_size, " ",uom.abbreviation) Product, ps.pack_size Pack_Size,
+dis.distributor_name as Distributor, "zone" Zone_Nmae,
+sbd.month Month,
+(case when sbd.month = 1 then 'Jan' 
+ when sbd.month = 2 then 'Feb' 
+ when sbd.month = 3 then 'Mar' 
+ when sbd.month = 4 then 'Apr'  
+ when sbd.month = 5 then 'May'  
+ when sbd.month = 6 then 'Jun' 
+ when sbd.month = 7 then 'Jul' 
+ when sbd.month = 8 then 'Aug' 
+ when sbd.month = 9 then 'Sep' 
+ when sbd.month = 10 then 'Oct'
+ when sbd.month = 11 then 'Nov'
+ when sbd.month = 12 then 'Dec' end) Months,(round((sbd.quantity*sbd.product_trade_price),4)) budget_amount 
+from sales_budget sb 
+inner join sales_budget_details sbd on sb.id = sbd.sales_budget_id and sb.accounting_year_id = $P{accountingYearId}
+and sb.company_id = $P{companyId} and sb.approval_status = "APPROVED" and sb.is_active is true and sb.is_deleted is false and 
+(case when target_type = "DISTRIBUTOR" 
+             			  then   $X{IN, sbd.distributor_id, distributors}
+            when target_type = "SALES_OFFICER"
+                        then    $X{IN, sbd.sales_officer_id, salesOfficers}
+            else      $X{IN, sbd.location_id, locations}           
+end ) 
+and  sbd.month >= $P{fromMonthId}  and  sbd.month <=$P{toMonthId}
+left join distributor_sales_officer_map disSalesMap on (case when target_type = "DISTRIBUTOR" then sbd.distributor_id end) =
+(case when target_type = "DISTRIBUTOR" then disSalesMap.distributor_id end) 
+and disSalesMap.is_active is true and disSalesMap.is_deleted is false
+left join location loc on (case when target_type = "LOCATION" then sbd.location_id end) = loc.id 
+left join reporting_manager rm on 
+(case when target_type = "SALES_OFFICER" then sbd.sales_officer_id 
+      when target_type = "DISTRIBUTOR" then disSalesMap.sales_officer_id end) 
+ = rm.application_user_id and rm.to_date is null and rm.is_active is true 
+and rm.is_deleted is false 
+left join location_manager_map lmm on rm.reporting_to_id = lmm.application_user_id 
+and lmm.to_date is null and lmm.is_active is true and lmm.is_deleted is false 
+left join location mloc on lmm.location_id = mloc.id   
+left join application_user au on 
+(case when target_type = "SALES_OFFICER" then sbd.sales_officer_id 
+      when target_type = "DISTRIBUTOR" then disSalesMap.sales_officer_id end) = au.id
+
+inner join product prod on sbd.product_id = prod.id
+left join pack_size ps on prod.pack_size_id = ps.id and ps.is_active is true and ps.is_deleted is false
+left join unit_of_measurement uom on ps.uom_id = uom.id and uom.is_active is true and uom.is_deleted is false
+left join distributor dis on 
+(case when target_type = "DISTRIBUTOR" then sbd.distributor_id 
+      when target_type = "SALES_OFFICER" then disSalesMap.distributor_id end) = dis.id
+         
+ order by sbd.month) budget_details 
+
+inner join child_location_hierarchy lht on budget_details.location_id = lht.id;]]>
+	</queryString>
+	<field name="id" class="java.math.BigInteger">
+		<property name="com.jaspersoft.studio.field.name" value="id"/>
+		<property name="com.jaspersoft.studio.field.label" value="id"/>
+		<property name="com.jaspersoft.studio.field.tree.path" value="child_location_hierarchy"/>
+	</field>
+	<field name="Zone" class="java.lang.String">
+		<property name="com.jaspersoft.studio.field.name" value="Zone"/>
+		<property name="com.jaspersoft.studio.field.label" value="Zone"/>
+		<property name="com.jaspersoft.studio.field.tree.path" value="child_location_hierarchy"/>
+	</field>
+	<field name="Area" class="java.lang.String">
+		<property name="com.jaspersoft.studio.field.name" value="Area"/>
+		<property name="com.jaspersoft.studio.field.label" value="Area"/>
+		<property name="com.jaspersoft.studio.field.tree.path" value="child_location_hierarchy"/>
+	</field>
+	<field name="Territory" class="java.lang.String">
+		<property name="com.jaspersoft.studio.field.name" value="Territory"/>
+		<property name="com.jaspersoft.studio.field.label" value="Territory"/>
+		<property name="com.jaspersoft.studio.field.tree.path" value="child_location_hierarchy"/>
+	</field>
+	<field name="location_id" class="java.lang.Long">
+		<property name="com.jaspersoft.studio.field.name" value="location_id"/>
+		<property name="com.jaspersoft.studio.field.label" value="location_id"/>
+		<property name="com.jaspersoft.studio.field.tree.path" value="lmm"/>
+	</field>
+	<field name="salesOfficerId" class="java.lang.Long">
+		<property name="com.jaspersoft.studio.field.name" value="salesOfficerId"/>
+		<property name="com.jaspersoft.studio.field.label" value="salesOfficerId"/>
+	</field>
+	<field name="Sales_Officer" class="java.lang.String">
+		<property name="com.jaspersoft.studio.field.name" value="Sales_Officer"/>
+		<property name="com.jaspersoft.studio.field.label" value="Sales_Officer"/>
+		<property name="com.jaspersoft.studio.field.tree.path" value="au"/>
+	</field>
+	<field name="Product" class="java.lang.String">
+		<property name="com.jaspersoft.studio.field.name" value="Product"/>
+		<property name="com.jaspersoft.studio.field.label" value="Product"/>
+	</field>
+	<field name="Pack_Size" class="java.lang.Integer">
+		<property name="com.jaspersoft.studio.field.name" value="Pack_Size"/>
+		<property name="com.jaspersoft.studio.field.label" value="Pack_Size"/>
+		<property name="com.jaspersoft.studio.field.tree.path" value="ps"/>
+	</field>
+	<field name="Distributor" class="java.lang.String">
+		<property name="com.jaspersoft.studio.field.name" value="Distributor"/>
+		<property name="com.jaspersoft.studio.field.label" value="Distributor"/>
+		<property name="com.jaspersoft.studio.field.tree.path" value="dis"/>
+	</field>
+	<field name="Zone_Nmae" class="java.lang.String">
+		<property name="com.jaspersoft.studio.field.name" value="Zone_Nmae"/>
+		<property name="com.jaspersoft.studio.field.label" value="Zone_Nmae"/>
+	</field>
+	<field name="Month" class="java.lang.Integer">
+		<property name="com.jaspersoft.studio.field.name" value="Month"/>
+		<property name="com.jaspersoft.studio.field.label" value="Month"/>
+		<property name="com.jaspersoft.studio.field.tree.path" value="sbd"/>
+	</field>
+	<field name="Months" class="java.lang.String">
+		<property name="com.jaspersoft.studio.field.name" value="Months"/>
+		<property name="com.jaspersoft.studio.field.label" value="Months"/>
+	</field>
+	<field name="budget_amount" class="java.lang.Double">
+		<property name="com.jaspersoft.studio.field.name" value="budget_amount"/>
+		<property name="com.jaspersoft.studio.field.label" value="budget_amount"/>
+	</field>
+	<background>
+		<band splitType="Stretch"/>
+	</background>
+	<title>
+		<band height="108">
+			<textField isBlankWhenNull="true">
+				<reportElement x="0" y="72" width="70" height="18" uuid="cfa18b2d-c6ab-4515-b5a5-8374fdaaa946">
+					<property name="com.jaspersoft.studio.unit.width" value="px"/>
+					<property name="com.jaspersoft.studio.unit.x" value="px"/>
+					<property name="com.jaspersoft.studio.unit.leftIndent" value="px"/>
+					<property name="com.jaspersoft.studio.unit.height" value="px"/>
+				</reportElement>
+				<textElement verticalAlignment="Top">
+					<font fontName="SansSerif" size="10" isBold="false"/>
+					<paragraph leftIndent="2"/>
+				</textElement>
+				<textFieldExpression><![CDATA["Printed By :"]]></textFieldExpression>
+			</textField>
+			<textField isBlankWhenNull="true">
+				<reportElement x="0" y="90" width="70" height="18" uuid="d9072253-78f1-4635-aa89-cf13e2b7c3be">
+					<property name="com.jaspersoft.studio.unit.width" value="px"/>
+					<property name="com.jaspersoft.studio.unit.x" value="px"/>
+					<property name="com.jaspersoft.studio.unit.leftIndent" value="px"/>
+				</reportElement>
+				<textElement verticalAlignment="Top">
+					<font fontName="SansSerif" size="10" isBold="false"/>
+					<paragraph leftIndent="2"/>
+				</textElement>
+				<textFieldExpression><![CDATA["Date & Time :"]]></textFieldExpression>
+			</textField>
+			<textField isBlankWhenNull="true">
+				<reportElement x="0" y="54" width="1200" height="18" uuid="107b4bd9-abca-46ea-9d59-8e4dcb100939">
+					<property name="com.jaspersoft.studio.unit.height" value="px"/>
+				</reportElement>
+				<textElement textAlignment="Left" verticalAlignment="Top">
+					<font size="12" isBold="true"/>
+				</textElement>
+				<textFieldExpression><![CDATA["Budget Period : "+$P{budgetPeriod} + " -  " + $P{dateHeader}]]></textFieldExpression>
+			</textField>
+			<textField isBlankWhenNull="true">
+				<reportElement x="0" y="18" width="1200" height="18" uuid="8b221cee-b934-4445-8a70-d5ba7bb5b1a7">
+					<property name="com.jaspersoft.studio.unit.height" value="px"/>
+				</reportElement>
+				<textElement textAlignment="Left">
+					<font size="10"/>
+				</textElement>
+				<textFieldExpression><![CDATA[$P{companyAddress}]]></textFieldExpression>
+			</textField>
+			<textField isBlankWhenNull="true">
+				<reportElement x="70" y="72" width="1130" height="18" uuid="9fef6b1c-a8fc-4e25-b10f-89ba2b8271d5">
+					<property name="com.jaspersoft.studio.unit.width" value="px"/>
+					<property name="com.jaspersoft.studio.unit.height" value="px"/>
+				</reportElement>
+				<textElement verticalAlignment="Top">
+					<font fontName="SansSerif" size="10" isBold="false"/>
+				</textElement>
+				<textFieldExpression><![CDATA[$P{printedBy}]]></textFieldExpression>
+			</textField>
+			<textField isBlankWhenNull="true">
+				<reportElement x="0" y="36" width="1200" height="18" uuid="9185cc43-63d8-4af4-9127-638e8bb9fbf9"/>
+				<textElement textAlignment="Left" verticalAlignment="Top">
+					<font size="12" isBold="true"/>
+				</textElement>
+				<textFieldExpression><![CDATA["Sales Budget"]]></textFieldExpression>
+			</textField>
+			<textField isBlankWhenNull="true">
+				<reportElement x="0" y="0" width="1200" height="18" uuid="8d231bca-e178-4e88-a0ea-09cde60bbdb9">
+					<property name="com.jaspersoft.studio.unit.height" value="px"/>
+				</reportElement>
+				<textElement textAlignment="Left">
+					<font size="14" isBold="true"/>
+				</textElement>
+				<textFieldExpression><![CDATA[$P{companyName}]]></textFieldExpression>
+			</textField>
+			<textField pattern="dd-MMM-yyyy HH:mm a" isBlankWhenNull="true">
+				<reportElement x="70" y="90" width="1130" height="18" uuid="aded3526-9631-431a-a2b4-232a3b90fc84">
+					<property name="com.jaspersoft.studio.unit.width" value="px"/>
+					<property name="com.jaspersoft.studio.unit.height" value="px"/>
+				</reportElement>
+				<textElement verticalAlignment="Top">
+					<font fontName="SansSerif" size="10" isBold="false"/>
+				</textElement>
+				<textFieldExpression><![CDATA[new java.util.Date()]]></textFieldExpression>
+			</textField>
+		</band>
+	</title>
+	<summary>
+		<band height="142" splitType="Stretch">
+			<crosstab>
+				<reportElement x="0" y="2" width="1200" height="140" uuid="5d241f9b-4718-48a5-80b8-77ee5ede91eb">
+					<property name="com.jaspersoft.studio.layout" value="com.jaspersoft.studio.editor.layout.VerticalRowLayout"/>
+				</reportElement>
+				<crosstabDataset>
+					<dataset resetType="Report"/>
+				</crosstabDataset>
+				<crosstabHeaderCell>
+					<cellContents>
+						<property name="com.jaspersoft.studio.layout" value="com.jaspersoft.studio.editor.layout.FreeLayout"/>
+						<staticText>
+							<reportElement x="370" y="0" width="40" height="20" uuid="04d95323-08bc-4899-9c54-db3be70a791a"/>
+							<box>
+								<topPen lineWidth="1.0" lineStyle="Solid" lineColor="#000000"/>
+								<leftPen lineWidth="1.0" lineStyle="Solid" lineColor="#000000"/>
+								<bottomPen lineWidth="1.0" lineStyle="Solid" lineColor="#000000"/>
+								<rightPen lineWidth="1.0" lineStyle="Solid" lineColor="#000000"/>
+							</box>
+							<textElement textAlignment="Center" verticalAlignment="Middle">
+								<font size="10" isBold="true"/>
+							</textElement>
+							<text><![CDATA[Pack Size]]></text>
+						</staticText>
+						<staticText>
+							<reportElement x="310" y="0" width="60" height="20" uuid="cc4623e6-cf67-49e4-8398-989cdf0cf49e"/>
+							<box>
+								<topPen lineWidth="1.0" lineStyle="Solid" lineColor="#000000"/>
+								<leftPen lineWidth="1.0" lineStyle="Solid" lineColor="#000000"/>
+								<bottomPen lineWidth="1.0" lineStyle="Solid" lineColor="#000000"/>
+								<rightPen lineWidth="1.0" lineStyle="Solid" lineColor="#000000"/>
+							</box>
+							<textElement textAlignment="Center" verticalAlignment="Middle">
+								<font size="10" isBold="true"/>
+							</textElement>
+							<text><![CDATA[Product]]></text>
+						</staticText>
+						<staticText>
+							<reportElement x="240" y="0" width="70" height="20" uuid="afc65fae-4466-49b0-843a-5f0ac85be007"/>
+							<box>
+								<topPen lineWidth="1.0" lineStyle="Solid" lineColor="#000000"/>
+								<leftPen lineWidth="1.0" lineStyle="Solid" lineColor="#000000"/>
+								<bottomPen lineWidth="1.0" lineStyle="Solid" lineColor="#000000"/>
+								<rightPen lineWidth="1.0" lineStyle="Solid" lineColor="#000000"/>
+							</box>
+							<textElement textAlignment="Center" verticalAlignment="Middle">
+								<font size="10" isBold="true"/>
+							</textElement>
+							<text><![CDATA[Distributor]]></text>
+						</staticText>
+						<staticText>
+							<reportElement x="170" y="0" width="70" height="20" uuid="b6d13490-595a-4095-b6e2-4e5c7d98be48"/>
+							<box>
+								<topPen lineWidth="1.0" lineStyle="Solid" lineColor="#000000"/>
+								<leftPen lineWidth="1.0" lineStyle="Solid" lineColor="#000000"/>
+								<bottomPen lineWidth="1.0" lineStyle="Solid" lineColor="#000000"/>
+								<rightPen lineWidth="1.0" lineStyle="Solid" lineColor="#000000"/>
+							</box>
+							<textElement textAlignment="Center" verticalAlignment="Middle">
+								<font size="10" isBold="true"/>
+							</textElement>
+							<text><![CDATA[Sales Officer]]></text>
+						</staticText>
+					</cellContents>
+				</crosstabHeaderCell>
+				<rowGroup name="Zone" width="60" totalPosition="End">
+					<bucket class="java.lang.String">
+						<bucketExpression><![CDATA[$F{Zone}]]></bucketExpression>
+					</bucket>
+					<crosstabRowHeader>
+						<cellContents mode="Opaque">
+							<textField>
+								<reportElement positionType="Float" stretchType="RelativeToBandHeight" x="0" y="0" width="60" height="100" uuid="618f5b5a-9e48-4177-a474-038bd1903360"/>
+								<box leftPadding="2">
+									<topPen lineWidth="1.0" lineStyle="Solid" lineColor="#000000"/>
+									<leftPen lineWidth="1.0" lineStyle="Solid" lineColor="#000000"/>
+									<bottomPen lineWidth="1.0" lineStyle="Solid" lineColor="#000000"/>
+									<rightPen lineWidth="1.0" lineStyle="Solid" lineColor="#000000"/>
+								</box>
+								<textElement textAlignment="Left" verticalAlignment="Middle"/>
+								<textFieldExpression><![CDATA[$V{Zone}]]></textFieldExpression>
+							</textField>
+						</cellContents>
+					</crosstabRowHeader>
+					<crosstabTotalRowHeader>
+						<cellContents mode="Opaque">
+							<staticText>
+								<reportElement x="0" y="0" width="410" height="20" forecolor="#000000" uuid="d6a53449-03b8-449f-a4b0-51693a21ffc5"/>
+								<box leftPadding="2">
+									<topPen lineWidth="1.0" lineStyle="Solid" lineColor="#000000"/>
+									<leftPen lineWidth="1.0" lineStyle="Solid" lineColor="#000000"/>
+									<bottomPen lineWidth="1.0" lineStyle="Solid" lineColor="#000000"/>
+									<rightPen lineWidth="1.0" lineStyle="Solid" lineColor="#000000"/>
+								</box>
+								<textElement textAlignment="Left" verticalAlignment="Middle">
+									<font isBold="true"/>
+								</textElement>
+								<text><![CDATA[Total Zone]]></text>
+							</staticText>
+						</cellContents>
+					</crosstabTotalRowHeader>
+				</rowGroup>
+				<rowGroup name="Area" width="60" totalPosition="End">
+					<bucket class="java.lang.String">
+						<bucketExpression><![CDATA[$F{Area}]]></bucketExpression>
+					</bucket>
+					<crosstabRowHeader>
+						<cellContents mode="Opaque">
+							<textField>
+								<reportElement positionType="Float" stretchType="RelativeToBandHeight" x="0" y="0" width="60" height="80" uuid="ea541ac9-0225-46a6-b4e9-e48e7e9dba91"/>
+								<box leftPadding="2">
+									<topPen lineWidth="1.0" lineStyle="Solid" lineColor="#000000"/>
+									<leftPen lineWidth="1.0" lineStyle="Solid" lineColor="#000000"/>
+									<bottomPen lineWidth="1.0" lineStyle="Solid" lineColor="#000000"/>
+									<rightPen lineWidth="1.0" lineStyle="Solid" lineColor="#000000"/>
+								</box>
+								<textElement textAlignment="Left" verticalAlignment="Middle"/>
+								<textFieldExpression><![CDATA[$V{Area}]]></textFieldExpression>
+							</textField>
+						</cellContents>
+					</crosstabRowHeader>
+					<crosstabTotalRowHeader>
+						<cellContents mode="Opaque">
+							<staticText>
+								<reportElement x="0" y="0" width="350" height="20" uuid="f3805f2e-29fe-40ba-953b-1aca6ddc6b34"/>
+								<box leftPadding="2">
+									<topPen lineWidth="1.0" lineStyle="Solid" lineColor="#000000"/>
+									<leftPen lineWidth="1.0" lineStyle="Solid" lineColor="#000000"/>
+									<bottomPen lineWidth="1.0" lineStyle="Solid" lineColor="#000000"/>
+									<rightPen lineWidth="1.0" lineStyle="Solid" lineColor="#000000"/>
+								</box>
+								<textElement textAlignment="Left" verticalAlignment="Middle">
+									<font isBold="true"/>
+								</textElement>
+								<text><![CDATA[Total Area]]></text>
+							</staticText>
+						</cellContents>
+					</crosstabTotalRowHeader>
+				</rowGroup>
+				<rowGroup name="Territory" width="50" totalPosition="End">
+					<bucket class="java.lang.String">
+						<bucketExpression><![CDATA[$F{Territory}]]></bucketExpression>
+					</bucket>
+					<crosstabRowHeader>
+						<cellContents mode="Opaque">
+							<property name="com.jaspersoft.studio.layout" value="com.jaspersoft.studio.editor.layout.FreeLayout"/>
+							<textField>
+								<reportElement positionType="Float" stretchType="RelativeToBandHeight" x="0" y="0" width="50" height="60" uuid="86a666c9-18fc-4f6c-8461-b1eb075620c9"/>
+								<box leftPadding="2">
+									<topPen lineWidth="1.0" lineStyle="Solid" lineColor="#000000"/>
+									<leftPen lineWidth="1.0" lineStyle="Solid" lineColor="#000000"/>
+									<bottomPen lineWidth="1.0" lineStyle="Solid" lineColor="#000000"/>
+									<rightPen lineWidth="1.0" lineStyle="Solid" lineColor="#000000"/>
+								</box>
+								<textElement textAlignment="Left" verticalAlignment="Middle"/>
+								<textFieldExpression><![CDATA[$V{Territory}]]></textFieldExpression>
+							</textField>
+						</cellContents>
+					</crosstabRowHeader>
+					<crosstabTotalRowHeader>
+						<cellContents mode="Opaque">
+							<staticText>
+								<reportElement x="0" y="0" width="290" height="20" uuid="06eacdbc-d6d0-496b-9c00-90852fe282f5"/>
+								<box leftPadding="2">
+									<topPen lineWidth="1.0" lineStyle="Solid" lineColor="#000000"/>
+									<leftPen lineWidth="1.0" lineStyle="Solid" lineColor="#000000"/>
+									<bottomPen lineWidth="1.0" lineStyle="Solid" lineColor="#000000"/>
+									<rightPen lineWidth="1.0" lineStyle="Solid" lineColor="#000000"/>
+								</box>
+								<textElement textAlignment="Left" verticalAlignment="Middle">
+									<font isBold="true"/>
+								</textElement>
+								<text><![CDATA[Total Territory]]></text>
+							</staticText>
+						</cellContents>
+					</crosstabTotalRowHeader>
+				</rowGroup>
+				<rowGroup name="Sales_Officer" width="70" totalPosition="End">
+					<bucket class="java.lang.String">
+						<bucketExpression><![CDATA[$F{Sales_Officer}]]></bucketExpression>
+					</bucket>
+					<crosstabRowHeader>
+						<cellContents mode="Opaque">
+							<property name="com.jaspersoft.studio.layout" value="com.jaspersoft.studio.editor.layout.FreeLayout"/>
+							<textField>
+								<reportElement positionType="Float" stretchType="RelativeToBandHeight" x="0" y="0" width="70" height="40" uuid="e4c8814a-c4ec-4fb8-b6a9-cdc018ce5e3c"/>
+								<box leftPadding="2">
+									<topPen lineWidth="1.0" lineStyle="Solid" lineColor="#000000"/>
+									<leftPen lineWidth="1.0" lineStyle="Solid" lineColor="#000000"/>
+									<bottomPen lineWidth="1.0" lineStyle="Solid" lineColor="#000000"/>
+									<rightPen lineWidth="1.0" lineStyle="Solid" lineColor="#000000"/>
+								</box>
+								<textElement textAlignment="Left" verticalAlignment="Middle"/>
+								<textFieldExpression><![CDATA[$V{Sales_Officer}]]></textFieldExpression>
+							</textField>
+						</cellContents>
+					</crosstabRowHeader>
+					<crosstabTotalRowHeader>
+						<cellContents mode="Opaque">
+							<staticText>
+								<reportElement x="0" y="0" width="240" height="20" uuid="df3cf250-e512-4aad-adc2-bf8d8e2b4151"/>
+								<box leftPadding="2">
+									<topPen lineWidth="1.0" lineStyle="Solid" lineColor="#000000"/>
+									<leftPen lineWidth="1.0" lineStyle="Solid" lineColor="#000000"/>
+									<bottomPen lineWidth="1.0" lineStyle="Solid" lineColor="#000000"/>
+									<rightPen lineWidth="1.0" lineStyle="Solid" lineColor="#000000"/>
+								</box>
+								<textElement textAlignment="Left" verticalAlignment="Middle">
+									<font isBold="true"/>
+								</textElement>
+								<text><![CDATA[Total Sales_Officer]]></text>
+							</staticText>
+						</cellContents>
+					</crosstabTotalRowHeader>
+				</rowGroup>
+				<rowGroup name="Distributor" width="70" totalPosition="End">
+					<bucket class="java.lang.String">
+						<bucketExpression><![CDATA[$F{Distributor}]]></bucketExpression>
+					</bucket>
+					<crosstabRowHeader>
+						<cellContents mode="Opaque">
+							<property name="com.jaspersoft.studio.layout" value="com.jaspersoft.studio.editor.layout.FreeLayout"/>
+							<textField>
+								<reportElement positionType="Float" stretchType="RelativeToBandHeight" x="0" y="0" width="70" height="20" uuid="809c7e6a-1f56-45f4-8b36-aa84de18a949"/>
+								<box leftPadding="2">
+									<topPen lineWidth="1.0" lineStyle="Solid" lineColor="#000000"/>
+									<leftPen lineWidth="1.0" lineStyle="Solid" lineColor="#000000"/>
+									<bottomPen lineWidth="1.0" lineStyle="Solid" lineColor="#000000"/>
+									<rightPen lineWidth="1.0" lineStyle="Solid" lineColor="#000000"/>
+								</box>
+								<textElement textAlignment="Left" verticalAlignment="Middle"/>
+								<textFieldExpression><![CDATA[$V{Distributor}]]></textFieldExpression>
+							</textField>
+						</cellContents>
+					</crosstabRowHeader>
+					<crosstabTotalRowHeader>
+						<cellContents mode="Opaque">
+							<property name="com.jaspersoft.studio.layout" value="com.jaspersoft.studio.editor.layout.FreeLayout"/>
+							<staticText>
+								<reportElement x="0" y="0" width="170" height="20" uuid="218e4ce6-3194-468f-a657-004ae18b21d0"/>
+								<box leftPadding="2">
+									<topPen lineWidth="1.0" lineStyle="Solid" lineColor="#000000"/>
+									<leftPen lineWidth="1.0" lineStyle="Solid" lineColor="#000000"/>
+									<bottomPen lineWidth="1.0" lineStyle="Solid" lineColor="#000000"/>
+									<rightPen lineWidth="1.0" lineStyle="Solid" lineColor="#000000"/>
+								</box>
+								<textElement textAlignment="Left" verticalAlignment="Middle">
+									<font isBold="true"/>
+								</textElement>
+								<text><![CDATA[Total Distributor]]></text>
+							</staticText>
+						</cellContents>
+					</crosstabTotalRowHeader>
+				</rowGroup>
+				<rowGroup name="Product" width="60">
+					<bucket class="java.lang.String">
+						<bucketExpression><![CDATA[$F{Product}]]></bucketExpression>
+					</bucket>
+					<crosstabRowHeader>
+						<cellContents mode="Opaque">
+							<property name="com.jaspersoft.studio.layout" value="com.jaspersoft.studio.editor.layout.FreeLayout"/>
+							<textField>
+								<reportElement x="0" y="0" width="60" height="20" uuid="709c2157-594b-4790-ab67-c14544d8ee51"/>
+								<box leftPadding="2">
+									<topPen lineWidth="1.0" lineStyle="Solid" lineColor="#000000"/>
+									<leftPen lineWidth="1.0" lineStyle="Solid" lineColor="#000000"/>
+									<bottomPen lineWidth="1.0" lineStyle="Solid" lineColor="#000000"/>
+									<rightPen lineWidth="1.0" lineStyle="Solid" lineColor="#000000"/>
+								</box>
+								<textElement textAlignment="Left" verticalAlignment="Middle"/>
+								<textFieldExpression><![CDATA[$V{Product}]]></textFieldExpression>
+							</textField>
+						</cellContents>
+					</crosstabRowHeader>
+					<crosstabTotalRowHeader>
+						<cellContents>
+							<staticText>
+								<reportElement x="0" y="0" width="0" height="0" uuid="cb49c032-6ff0-4efe-a505-081cb3760497"/>
+								<text><![CDATA[Total Product]]></text>
+							</staticText>
+						</cellContents>
+					</crosstabTotalRowHeader>
+				</rowGroup>
+				<rowGroup name="Pack_Size" width="40">
+					<bucket class="java.lang.Integer">
+						<bucketExpression><![CDATA[$F{Pack_Size}]]></bucketExpression>
+					</bucket>
+					<crosstabRowHeader>
+						<cellContents mode="Opaque">
+							<property name="com.jaspersoft.studio.layout" value="com.jaspersoft.studio.editor.layout.FreeLayout"/>
+							<textField>
+								<reportElement x="0" y="0" width="40" height="20" uuid="8bceda95-933f-40f6-afb8-f36ca77d9671"/>
+								<box>
+									<topPen lineWidth="1.0" lineStyle="Solid" lineColor="#000000"/>
+									<leftPen lineWidth="1.0" lineStyle="Solid" lineColor="#000000"/>
+									<bottomPen lineWidth="1.0" lineStyle="Solid" lineColor="#000000"/>
+									<rightPen lineWidth="1.0" lineStyle="Solid" lineColor="#000000"/>
+								</box>
+								<textElement textAlignment="Center" verticalAlignment="Middle"/>
+								<textFieldExpression><![CDATA[$V{Pack_Size}]]></textFieldExpression>
+							</textField>
+						</cellContents>
+					</crosstabRowHeader>
+					<crosstabTotalRowHeader>
+						<cellContents>
+							<staticText>
+								<reportElement x="0" y="0" width="0" height="0" uuid="ee51d4bb-9d00-46b4-bbec-d0b0d160b513"/>
+								<text><![CDATA[Total Pack_Size]]></text>
+							</staticText>
+						</cellContents>
+					</crosstabTotalRowHeader>
+				</rowGroup>
+				<columnGroup name="Month" height="20">
+					<bucket class="java.lang.Integer">
+						<bucketExpression><![CDATA[$F{Month}]]></bucketExpression>
+					</bucket>
+					<crosstabColumnHeader>
+						<cellContents mode="Opaque">
+							<textField>
+								<reportElement x="0" y="0" width="60" height="20" uuid="c681ee14-154c-4ede-b52f-efd3df57db59"/>
+								<box>
+									<topPen lineWidth="1.0" lineStyle="Solid" lineColor="#000000"/>
+									<leftPen lineWidth="1.0" lineStyle="Solid" lineColor="#000000"/>
+									<bottomPen lineWidth="1.0" lineStyle="Solid" lineColor="#000000"/>
+									<rightPen lineWidth="1.0" lineStyle="Solid" lineColor="#000000"/>
+								</box>
+								<textElement textAlignment="Center" verticalAlignment="Middle">
+									<font size="10" isBold="true"/>
+								</textElement>
+								<textFieldExpression><![CDATA[$V{Month} == 1 ?  "Jan" : $V{Month} == 2 ? "Feb" : $V{Month} == 3 ? "Mar" : $V{Month} == 4 ? "Apr" : $V{Month} == 5 ? "May" : $V{Month} == 6 ? "Jun" : $V{Month} == 7 ? "Jul" : $V{Month} == 8 ? "Aug" : $V{Month} == 9 ? "Sep" : $V{Month} == 10 ? "Oct" : $V{Month} == 11 ? "Nov" : $V{Month} == 12 ? "Dec" : ""]]></textFieldExpression>
+							</textField>
+						</cellContents>
+					</crosstabColumnHeader>
+					<crosstabTotalColumnHeader>
+						<cellContents>
+							<staticText>
+								<reportElement x="0" y="0" width="0" height="0" uuid="c908d97b-315f-43e0-a03b-1a5a2cc9e953"/>
+								<text><![CDATA[Total Month]]></text>
+							</staticText>
+						</cellContents>
+					</crosstabTotalColumnHeader>
+				</columnGroup>
+				<measure name="budget_amount_MEASURE" class="java.lang.Double" calculation="Sum">
+					<measureExpression><![CDATA[$F{budget_amount}]]></measureExpression>
+				</measure>
+				<crosstabCell width="60" height="20">
+					<cellContents mode="Opaque">
+						<textField pattern="#,##0.00">
+							<reportElement x="0" y="0" width="60" height="20" uuid="9f626680-b2c5-4c91-a4ba-6bda3976e94d"/>
+							<box rightPadding="2">
+								<topPen lineWidth="1.0" lineStyle="Solid" lineColor="#000000"/>
+								<leftPen lineWidth="1.0" lineStyle="Solid" lineColor="#000000"/>
+								<bottomPen lineWidth="1.0" lineStyle="Solid" lineColor="#000000"/>
+								<rightPen lineWidth="1.0" lineStyle="Solid" lineColor="#000000"/>
+							</box>
+							<textElement textAlignment="Right" verticalAlignment="Middle"/>
+							<textFieldExpression><![CDATA[$V{budget_amount_MEASURE}]]></textFieldExpression>
+						</textField>
+					</cellContents>
+				</crosstabCell>
+				<crosstabCell width="60" height="20" columnTotalGroup="Month">
+					<cellContents mode="Opaque">
+						<textField>
+							<reportElement x="0" y="0" width="60" height="20" forecolor="#FFFFFF" uuid="7597a735-ec8d-4469-be6b-9a8a5463705b"/>
+							<textFieldExpression><![CDATA[$V{budget_amount_MEASURE}]]></textFieldExpression>
+						</textField>
+					</cellContents>
+				</crosstabCell>
+				<crosstabCell width="60" height="20" rowTotalGroup="Zone">
+					<cellContents mode="Opaque">
+						<textField pattern="#,##0.00">
+							<reportElement x="0" y="0" width="60" height="20" forecolor="#000000" uuid="fe11e791-2723-4fb4-94e4-974f125023a3"/>
+							<box rightPadding="2">
+								<topPen lineWidth="1.0" lineStyle="Solid" lineColor="#000000"/>
+								<leftPen lineWidth="1.0" lineStyle="Solid" lineColor="#000000"/>
+								<bottomPen lineWidth="1.0" lineStyle="Solid" lineColor="#000000"/>
+								<rightPen lineWidth="1.0" lineStyle="Solid" lineColor="#000000"/>
+							</box>
+							<textElement textAlignment="Right" verticalAlignment="Middle">
+								<font isBold="true"/>
+							</textElement>
+							<textFieldExpression><![CDATA[$V{budget_amount_MEASURE}]]></textFieldExpression>
+						</textField>
+					</cellContents>
+				</crosstabCell>
+				<crosstabCell width="60" height="20" rowTotalGroup="Zone" columnTotalGroup="Month">
+					<cellContents mode="Opaque">
+						<textField>
+							<reportElement x="0" y="0" width="60" height="20" forecolor="#FFFFFF" uuid="b04fb09d-8020-40e4-861e-3ad2bdbc059f"/>
+							<textFieldExpression><![CDATA[$V{budget_amount_MEASURE}]]></textFieldExpression>
+						</textField>
+					</cellContents>
+				</crosstabCell>
+				<crosstabCell width="60" height="20" rowTotalGroup="Area">
+					<cellContents mode="Opaque">
+						<textField pattern="#,##0.00">
+							<reportElement x="0" y="0" width="60" height="20" uuid="e7ccba6c-61b5-4726-8725-626e59da935e"/>
+							<box rightPadding="2">
+								<topPen lineWidth="1.0" lineStyle="Solid" lineColor="#000000"/>
+								<leftPen lineWidth="1.0" lineStyle="Solid" lineColor="#000000"/>
+								<bottomPen lineWidth="1.0" lineStyle="Solid" lineColor="#000000"/>
+								<rightPen lineWidth="1.0" lineStyle="Solid" lineColor="#000000"/>
+							</box>
+							<textElement textAlignment="Right" verticalAlignment="Middle">
+								<font isBold="true"/>
+							</textElement>
+							<textFieldExpression><![CDATA[$V{budget_amount_MEASURE}]]></textFieldExpression>
+						</textField>
+					</cellContents>
+				</crosstabCell>
+				<crosstabCell width="60" height="20" rowTotalGroup="Area" columnTotalGroup="Month">
+					<cellContents mode="Opaque">
+						<textField>
+							<reportElement x="0" y="0" width="60" height="20" forecolor="#FFFFFF" uuid="ba489b87-d211-4819-b830-61bdbc9068c9"/>
+							<textFieldExpression><![CDATA[$V{budget_amount_MEASURE}]]></textFieldExpression>
+						</textField>
+					</cellContents>
+				</crosstabCell>
+				<crosstabCell width="60" height="20" rowTotalGroup="Territory">
+					<cellContents mode="Opaque">
+						<textField pattern="#,##0.00">
+							<reportElement x="0" y="0" width="60" height="20" uuid="e7ff73a0-52b5-4257-bae1-76b9ca35fef0"/>
+							<box rightPadding="2">
+								<topPen lineWidth="1.0" lineStyle="Solid" lineColor="#000000"/>
+								<leftPen lineWidth="1.0" lineStyle="Solid" lineColor="#000000"/>
+								<bottomPen lineWidth="1.0" lineStyle="Solid" lineColor="#000000"/>
+								<rightPen lineWidth="1.0" lineStyle="Solid" lineColor="#000000"/>
+							</box>
+							<textElement textAlignment="Right" verticalAlignment="Middle">
+								<font isBold="true"/>
+							</textElement>
+							<textFieldExpression><![CDATA[$V{budget_amount_MEASURE}]]></textFieldExpression>
+						</textField>
+					</cellContents>
+				</crosstabCell>
+				<crosstabCell width="60" height="20" rowTotalGroup="Territory" columnTotalGroup="Month">
+					<cellContents mode="Opaque">
+						<textField>
+							<reportElement x="0" y="0" width="60" height="20" forecolor="#FFFFFF" uuid="ce627f81-5ce8-403e-9d8a-4c341a11e889"/>
+							<textFieldExpression><![CDATA[$V{budget_amount_MEASURE}]]></textFieldExpression>
+						</textField>
+					</cellContents>
+				</crosstabCell>
+				<crosstabCell width="60" height="20" rowTotalGroup="Sales_Officer">
+					<cellContents mode="Opaque">
+						<textField pattern="#,##0.00">
+							<reportElement x="0" y="0" width="60" height="20" uuid="6238e5a9-ac3a-4375-a55d-8ea953ed2326"/>
+							<box rightPadding="2">
+								<topPen lineWidth="1.0" lineStyle="Solid" lineColor="#000000"/>
+								<leftPen lineWidth="1.0" lineStyle="Solid" lineColor="#000000"/>
+								<bottomPen lineWidth="1.0" lineStyle="Solid" lineColor="#000000"/>
+								<rightPen lineWidth="1.0" lineStyle="Solid" lineColor="#000000"/>
+							</box>
+							<textElement textAlignment="Right" verticalAlignment="Middle">
+								<font isBold="true"/>
+							</textElement>
+							<textFieldExpression><![CDATA[$V{budget_amount_MEASURE}]]></textFieldExpression>
+						</textField>
+					</cellContents>
+				</crosstabCell>
+				<crosstabCell width="60" height="20" rowTotalGroup="Sales_Officer" columnTotalGroup="Month">
+					<cellContents mode="Opaque">
+						<textField>
+							<reportElement x="0" y="0" width="60" height="20" forecolor="#FFFFFF" uuid="0e105102-7d58-41f5-b672-b79b75231d55"/>
+							<textFieldExpression><![CDATA[$V{budget_amount_MEASURE}]]></textFieldExpression>
+						</textField>
+					</cellContents>
+				</crosstabCell>
+				<crosstabCell width="60" height="20" rowTotalGroup="Product">
+					<cellContents mode="Opaque">
+						<textField>
+							<reportElement x="0" y="0" width="60" height="20" uuid="9ce9229c-c655-40fb-862c-cc5870d4bf01"/>
+							<textFieldExpression><![CDATA[$V{budget_amount_MEASURE}]]></textFieldExpression>
+						</textField>
+					</cellContents>
+				</crosstabCell>
+				<crosstabCell width="60" height="20" rowTotalGroup="Product" columnTotalGroup="Month">
+					<cellContents mode="Opaque">
+						<textField>
+							<reportElement x="0" y="0" width="60" height="20" forecolor="#FFFFFF" uuid="45a75cef-3500-4132-bf7b-2100e026597f"/>
+							<textFieldExpression><![CDATA[$V{budget_amount_MEASURE}]]></textFieldExpression>
+						</textField>
+					</cellContents>
+				</crosstabCell>
+				<crosstabCell width="60" height="20" rowTotalGroup="Pack_Size">
+					<cellContents mode="Opaque">
+						<textField>
+							<reportElement x="0" y="0" width="60" height="20" uuid="aa37b513-aab1-4394-aed8-bb97cc58dfd3"/>
+							<textFieldExpression><![CDATA[$V{budget_amount_MEASURE}]]></textFieldExpression>
+						</textField>
+					</cellContents>
+				</crosstabCell>
+				<crosstabCell width="60" height="20" rowTotalGroup="Pack_Size" columnTotalGroup="Month">
+					<cellContents mode="Opaque">
+						<textField>
+							<reportElement x="0" y="0" width="60" height="20" forecolor="#FFFFFF" uuid="893f5f15-7256-45cb-b28c-3a7ff80d11a4"/>
+							<textFieldExpression><![CDATA[$V{budget_amount_MEASURE}]]></textFieldExpression>
+						</textField>
+					</cellContents>
+				</crosstabCell>
+				<crosstabCell width="60" height="20" rowTotalGroup="Distributor">
+					<cellContents mode="Opaque">
+						<textField pattern="#,##0.00">
+							<reportElement x="0" y="0" width="60" height="20" uuid="505813f4-603f-46f8-93fc-b4351df95190"/>
+							<box rightPadding="2">
+								<topPen lineWidth="1.0" lineStyle="Solid" lineColor="#000000"/>
+								<leftPen lineWidth="1.0" lineStyle="Solid" lineColor="#000000"/>
+								<bottomPen lineWidth="1.0" lineStyle="Solid" lineColor="#000000"/>
+								<rightPen lineWidth="1.0" lineStyle="Solid" lineColor="#000000"/>
+							</box>
+							<textElement textAlignment="Right" verticalAlignment="Middle">
+								<font isBold="true"/>
+							</textElement>
+							<textFieldExpression><![CDATA[$V{budget_amount_MEASURE}]]></textFieldExpression>
+						</textField>
+					</cellContents>
+				</crosstabCell>
+				<crosstabCell width="60" height="20" rowTotalGroup="Distributor" columnTotalGroup="Month">
+					<cellContents mode="Opaque">
+						<textField>
+							<reportElement x="0" y="0" width="60" height="20" forecolor="#FFFFFF" uuid="14098404-31eb-476e-800e-662359b42744"/>
+							<textFieldExpression><![CDATA[$V{budget_amount_MEASURE}]]></textFieldExpression>
+						</textField>
+					</cellContents>
+				</crosstabCell>
+			</crosstab>
+		</band>
+	</summary>
+</jasperReport>

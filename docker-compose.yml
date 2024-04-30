@@ -1,0 +1,36 @@
+version: "3.5"
+services:
+  back-end:
+    container_name: sales-care-back-end-app
+    image: sales-care-back-end-app-img
+    build:
+      context: ./
+      dockerfile: Dockerfile
+
+    networks:
+      - sales-care-net
+
+    restart: always
+    ports:
+      - 8081:8090 #host:container port
+
+  front-end:
+    depends_on:
+      - back-end
+
+    container_name: sales-care-front-end-app
+    image: sales-care-front-end-app-img
+    build:
+      context: ../ntl-snc_frontend/
+      dockerfile: Dockerfile
+
+    networks:
+      - sales-care-net
+
+    restart: always
+    ports:
+      - 3001:3005 #host:container port
+
+networks:
+  sales-care-net:
+    name: sales-care-net

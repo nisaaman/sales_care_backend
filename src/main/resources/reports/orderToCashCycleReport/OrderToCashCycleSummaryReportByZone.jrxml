@@ -1,0 +1,517 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Created with Jaspersoft Studio version 6.20.0.final using JasperReports Library version 6.20.0-2bc7ab61c56f459e8176eb05c7705e145cd400ad  -->
+<jasperReport xmlns="http://jasperreports.sourceforge.net/jasperreports" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://jasperreports.sourceforge.net/jasperreports http://jasperreports.sourceforge.net/xsd/jasperreport.xsd" name="OrderToCashCycleZone" pageWidth="595" pageHeight="842" whenNoDataType="AllSectionsNoDetail" columnWidth="523" leftMargin="36" rightMargin="36" topMargin="36" bottomMargin="36" uuid="5e34672f-1d1d-4791-bd91-12e7551553b4">
+	<property name="com.jaspersoft.studio.data.sql.tables" value=""/>
+	<property name="com.jaspersoft.studio.data.defaultdataadapter" value="testDB"/>
+	<property name="com.jaspersoft.studio.data.sql.SQLQueryDesigner.sash.w1" value="111"/>
+	<property name="com.jaspersoft.studio.data.sql.SQLQueryDesigner.sash.w2" value="883"/>
+	<property name="com.jaspersoft.studio.unit." value="pixel"/>
+	<property name="com.jaspersoft.studio.unit.pageHeight" value="pixel"/>
+	<property name="com.jaspersoft.studio.unit.pageWidth" value="pixel"/>
+	<property name="com.jaspersoft.studio.unit.topMargin" value="pixel"/>
+	<property name="com.jaspersoft.studio.unit.bottomMargin" value="pixel"/>
+	<property name="com.jaspersoft.studio.unit.leftMargin" value="pixel"/>
+	<property name="com.jaspersoft.studio.unit.rightMargin" value="pixel"/>
+	<property name="com.jaspersoft.studio.unit.columnWidth" value="pixel"/>
+	<property name="com.jaspersoft.studio.unit.columnSpacing" value="pixel"/>
+	<parameter name="companyName" class="java.lang.String"/>
+	<parameter name="companyAddress" class="java.lang.String"/>
+	<parameter name="locationIds" class="java.util.Collection"/>
+	<parameter name="startDate" class="java.util.Date"/>
+	<parameter name="endDate" class="java.util.Date"/>
+	<parameter name="companyLogo" class="java.io.InputStream"/>
+	<parameter name="reportHeader" class="java.lang.String"/>
+	<parameter name="dateHeader" class="java.lang.String"/>
+	<parameter name="productOwner" class="java.lang.String"/>
+	<parameter name="printedBy" class="java.lang.String"/>
+	<parameter name="isNational" class="java.lang.Boolean"/>
+	<parameter name="salesOfficerIds" class="java.util.Collection"/>
+	<parameter name="distributorIds" class="java.util.Collection"/>
+	<parameter name="isDistributorExist" class="java.lang.Boolean"/>
+	<parameter name="isSoExist" class="java.lang.Boolean"/>
+	<queryString language="SQL">
+		<![CDATA[select clh.*, so_dis_info.location_id, si.id sales_invoice_id, so_dis_info.sales_officer_id, so_dis_info.Sales_Officer, so_dis_info.distributor_id,
+so_dis_info.Distributor, 
+round((@gross_sales := si.invoice_amount + si.discount_amount + si.invoice_discount - si.vat_amount),4) Gross_Sales,si.discount_amount Trade_Disc,si.invoice_discount Invoice_Disc, 
+round((@net_sales :=(@gross_sales - si.discount_amount -si.invoice_discount)),4) Net_Sales, ifnull(ret_info.Return_Amount,0) Return_Amt, ifnull(drcr_info.DEBIT,0) DEBIT, ifnull(drcr_info.CREDIT,0) CREDIT,
+fg_info.FG, round((@actual := @net_sales - ifnull(ret_info.Return_Amount,0) + ifnull(drcr_info.DEBIT,0) - ifnull(drcr_info.CREDIT,0)),4) Actual, round((@actual - fg_info.FG),4) Contribution_Margin  from sales_invoice si left join 
+
+
+(select srp.sales_invoice_id, round(sum(ifnull(itd.quantity,0) * itd.rate),4) Return_Amount from sales_return_proposal srp 
+inner join sales_return sr on srp.id = sr.sales_return_proposal_id
+inner join inv_transaction_details itd on sr.inv_transaction_id = itd.inv_transaction_id group by srp.sales_invoice_id) ret_info on si.id = ret_info.sales_invoice_id 
+
+left join 
+
+(select sicm.sales_invoice_id, cdn.invoice_id,
+ifnull(sum(case when cdn.note_type = 'DEBIT' then cdn.amount end),0) as DEBIT,
+ifnull(sum(case when cdn.note_type = 'CREDIT' then cdn.amount end),0) as CREDIT
+from sales_invoice_challan_map sicm inner join sales_invoice si on si.id = sicm.sales_invoice_id
+inner join credit_debit_note cdn on sicm.sales_invoice_id = cdn.invoice_id group by cdn.invoice_id) drcr_info on si.id = drcr_info.sales_invoice_id
+
+
+left join 
+(select inv_trans_det.inv_transaction_id, sicm.sales_invoice_id, round(sum(inv_trans_det.quantity * inv_trans_det.rate),4) FG from sales_invoice_challan_map sicm inner join sales_invoice si on si.id = sicm.sales_invoice_id
+inner join inv_delivery_challan idc on sicm.inv_delivery_challan_id = idc.id
+inner join inv_transaction_details inv_trans_det on idc.inv_transaction_id = inv_trans_det.inv_transaction_id group by inv_trans_det.inv_transaction_id, sicm.sales_invoice_id) fg_info on si.id = fg_info.sales_invoice_id
+
+
+inner join 
+
+(select mloc.id location_id, inv_so_dis.id sb_id,inv_so_dis.sales_officer_id, inv_so_dis.Sales_Officer, inv_so_dis.distributor_id, inv_so_dis.Distributor, inv_so_dis.sales_invoice_id
+from 
+
+(select sb.id,sb.sales_officer_id, au.name Sales_Officer, sb.distributor_id, dis.distributor_name Distributor, sicm.sales_invoice_id from sales_invoice_challan_map sicm inner join sales_invoice si on si.id = sicm.sales_invoice_id
+inner join inv_delivery_challan idc on sicm.inv_delivery_challan_id = idc.id
+inner join 
+(select inv_transaction_id, sales_order_details_id from inv_transaction_details group by inv_transaction_id,sales_order_details_id) inv_det on idc.inv_transaction_id = inv_det.inv_transaction_id
+inner join (select sales_booking_details_id,id from sales_order_details group by sales_booking_details_id,id) sod on inv_det.sales_order_details_id = sod.id
+
+inner join (select id, sales_booking_id from sales_booking_details group by id, sales_booking_id) sbd on sod.sales_booking_details_id = sbd.id
+inner join sales_booking sb on sbd.sales_booking_id = sb.id
+inner join application_user au on sb.sales_officer_id = au.id
+inner join distributor dis on sb.distributor_id = dis.id
+group by sb.id, sicm.sales_invoice_id order by sicm.sales_invoice_id) inv_so_dis
+
+inner join 
+
+reporting_manager rm on 
+inv_so_dis.sales_officer_id = rm.application_user_id and rm.to_date is null and rm.is_active is true 
+and rm.is_deleted is false 
+left join location_manager_map lmm on rm.reporting_to_id = lmm.application_user_id 
+and lmm.to_date is null and lmm.is_active is true and lmm.is_deleted is false 
+inner join location mloc on lmm.location_id = mloc.id and 
+($P{isNational} is true or  $X{IN, mloc.id, locationIds})
+    
+order by inv_so_dis.sales_invoice_id) so_dis_info on si.id = so_dis_info.sales_invoice_id
+
+and (coalesce($P{startDate}) is null or si.invoice_date >= $P{startDate}) 
+and (coalesce($P{endDate}) is null or si.invoice_date <=$P{endDate}) 
+
+inner join child_location_hierarchy clh on so_dis_info.location_id = clh.id;]]>
+	</queryString>
+	<field name="id" class="java.math.BigInteger"/>
+	<field name="Zone" class="java.lang.String"/>
+	<field name="Area" class="java.lang.String"/>
+	<field name="Territory" class="java.lang.String"/>
+	<field name="so_name" class="java.lang.String"/>
+	<field name="distributor_name" class="java.lang.String"/>
+	<field name="number_of_invoice" class="java.math.BigInteger"/>
+	<field name="sum_of_net_invoice_amount" class="java.lang.Double"/>
+	<field name="sum_of_collection_amount" class="java.lang.Double"/>
+	<field name="average_collection_days" class="java.math.BigDecimal"/>
+	<variable name="numberOfInvoice" class="java.math.BigDecimal" calculation="Sum">
+		<variableExpression><![CDATA[$F{number_of_invoice}]]></variableExpression>
+	</variable>
+	<variable name="sumOfNetInvoiceAmount" class="java.lang.Double" calculation="Sum">
+		<variableExpression><![CDATA[$F{sum_of_net_invoice_amount}]]></variableExpression>
+	</variable>
+	<variable name="sumOfNetCollectionAmount" class="java.lang.Double" calculation="Sum">
+		<variableExpression><![CDATA[$F{sum_of_collection_amount}]]></variableExpression>
+	</variable>
+	<variable name="averageCollectionDays" class="java.math.BigDecimal" calculation="Average">
+		<variableExpression><![CDATA[$F{average_collection_days}]]></variableExpression>
+	</variable>
+	<variable name="numberOfInvoice_1" class="java.math.BigDecimal" resetType="Group" resetGroup="Zone" calculation="Sum">
+		<variableExpression><![CDATA[$F{number_of_invoice}]]></variableExpression>
+	</variable>
+	<variable name="sumOfNetInvoiceAmount_1" class="java.lang.Double" resetType="Group" resetGroup="Zone" calculation="Sum">
+		<variableExpression><![CDATA[$F{sum_of_net_invoice_amount}]]></variableExpression>
+	</variable>
+	<variable name="sumOfNetCollectionAmount_1" class="java.lang.Double" resetType="Group" resetGroup="Zone" calculation="Sum">
+		<variableExpression><![CDATA[$F{sum_of_collection_amount}]]></variableExpression>
+	</variable>
+	<variable name="averageCollectionDays_1" class="java.math.BigDecimal" resetType="Group" resetGroup="Zone" calculation="Average">
+		<variableExpression><![CDATA[$F{average_collection_days}]]></variableExpression>
+	</variable>
+	<group name="Zone">
+		<groupExpression><![CDATA[$F{Zone}]]></groupExpression>
+		<groupFooter>
+			<band height="30">
+				<textField textAdjust="StretchHeight" isBlankWhenNull="true">
+					<reportElement positionType="Float" stretchType="RelativeToTallestObject" isPrintRepeatedValues="false" x="0" y="0" width="82" height="30" uuid="7d6c9111-1a07-4b9c-bfdd-411a5a76ba2c">
+						<property name="com.jaspersoft.studio.spreadsheet.connectionID" value="f11dae08-b6d0-4748-9854-3519c8e4bcf5"/>
+					</reportElement>
+					<box leftPadding="2">
+						<topPen lineWidth="0.0" lineStyle="Solid" lineColor="#000000"/>
+						<leftPen lineWidth="1.0" lineStyle="Solid" lineColor="#000000"/>
+						<bottomPen lineWidth="1.0" lineStyle="Solid" lineColor="#000000"/>
+						<rightPen lineWidth="1.0" lineStyle="Solid" lineColor="#000000"/>
+					</box>
+					<textElement textAlignment="Left" verticalAlignment="Middle"/>
+					<textFieldExpression><![CDATA[$F{Zone}]]></textFieldExpression>
+				</textField>
+				<line>
+					<reportElement x="0" y="0" width="1" height="30" uuid="ffe3ffd3-249a-4100-a08b-0e8b8242cbf1"/>
+				</line>
+				<textField pattern="#,##0.00#" isBlankWhenNull="true">
+					<reportElement x="270" y="0" width="158" height="30" uuid="17b9549c-da54-4940-9603-b4c6b0a693ea">
+						<property name="com.jaspersoft.studio.spreadsheet.connectionID" value="64ff7c3f-7670-4e07-819a-0c2f4b516469"/>
+						<property name="com.jaspersoft.studio.unit.width" value="px"/>
+					</reportElement>
+					<box rightPadding="2">
+						<topPen lineWidth="0.03" lineStyle="Solid" lineColor="#000000"/>
+						<leftPen lineWidth="0.03" lineStyle="Solid" lineColor="#000000"/>
+						<bottomPen lineWidth="0.03" lineStyle="Solid" lineColor="#000000"/>
+						<rightPen lineWidth="0.03" lineStyle="Solid" lineColor="#000000"/>
+					</box>
+					<textElement textAlignment="Right" verticalAlignment="Middle">
+						<paragraph rightIndent="2"/>
+					</textElement>
+					<textFieldExpression><![CDATA[$V{sumOfNetCollectionAmount_1}]]></textFieldExpression>
+				</textField>
+				<textField isBlankWhenNull="true">
+					<reportElement x="428" y="0" width="92" height="30" uuid="fd1acad0-44db-482e-84e6-6de54ddb730b">
+						<property name="com.jaspersoft.studio.spreadsheet.connectionID" value="25b9f501-5a2f-4496-b19b-04399b0ff7cc"/>
+						<property name="com.jaspersoft.studio.unit.width" value="px"/>
+					</reportElement>
+					<box>
+						<topPen lineWidth="0.03" lineStyle="Solid" lineColor="#000000"/>
+						<leftPen lineWidth="0.03" lineStyle="Solid" lineColor="#000000"/>
+						<bottomPen lineWidth="0.03" lineStyle="Solid" lineColor="#000000"/>
+						<rightPen lineWidth="0.03" lineStyle="Solid" lineColor="#000000"/>
+					</box>
+					<textElement textAlignment="Center" verticalAlignment="Middle"/>
+					<textFieldExpression><![CDATA[$V{averageCollectionDays_1}]]></textFieldExpression>
+				</textField>
+				<textField pattern="#,##0.00#" isBlankWhenNull="true">
+					<reportElement isPrintRepeatedValues="false" x="150" y="0" width="120" height="30" uuid="5ec82104-1e22-44cc-bbd6-05a0fefb0f33">
+						<property name="com.jaspersoft.studio.spreadsheet.connectionID" value="9455c82e-30fe-40ca-8ab7-90f6db45d83f"/>
+					</reportElement>
+					<box>
+						<topPen lineWidth="0.03" lineStyle="Solid" lineColor="#000000"/>
+						<leftPen lineWidth="0.03" lineStyle="Solid" lineColor="#000000"/>
+						<bottomPen lineWidth="0.03" lineStyle="Solid" lineColor="#000000"/>
+						<rightPen lineWidth="0.03" lineStyle="Solid" lineColor="#000000"/>
+					</box>
+					<textElement textAlignment="Right" verticalAlignment="Middle">
+						<paragraph rightIndent="2"/>
+					</textElement>
+					<textFieldExpression><![CDATA[$V{sumOfNetInvoiceAmount_1}]]></textFieldExpression>
+				</textField>
+				<textField isBlankWhenNull="true">
+					<reportElement isPrintRepeatedValues="false" x="82" y="0" width="68" height="30" uuid="fa05b982-2104-4d6c-861b-c32ac21cff0b">
+						<property name="com.jaspersoft.studio.spreadsheet.connectionID" value="959b1ecb-9706-4bc1-8377-27d0f0b000e5"/>
+						<property name="com.jaspersoft.studio.unit.width" value="px"/>
+					</reportElement>
+					<box>
+						<topPen lineWidth="0.03" lineStyle="Solid" lineColor="#000000"/>
+						<leftPen lineWidth="0.03" lineStyle="Solid" lineColor="#000000"/>
+						<bottomPen lineWidth="0.03" lineStyle="Solid" lineColor="#000000"/>
+						<rightPen lineWidth="0.03" lineStyle="Solid" lineColor="#000000"/>
+					</box>
+					<textElement textAlignment="Center" verticalAlignment="Middle"/>
+					<textFieldExpression><![CDATA[$V{numberOfInvoice_1}]]></textFieldExpression>
+				</textField>
+			</band>
+		</groupFooter>
+	</group>
+	<background>
+		<band splitType="Stretch"/>
+	</background>
+	<title>
+		<band height="72" splitType="Stretch">
+			<image>
+				<reportElement x="0" y="0" width="80" height="59" uuid="96cb0313-9ecf-43ec-a027-290a4be03d8a"/>
+				<imageExpression><![CDATA[$P{companyLogo}]]></imageExpression>
+			</image>
+			<textField textAdjust="StretchHeight" pattern="" isBlankWhenNull="true">
+				<reportElement positionType="Float" stretchType="RelativeToBandHeight" x="90" y="54" width="368" height="18" uuid="a3e44221-5bf2-40c9-b5e2-1b8c360dd793">
+					<property name="local_mesure_unitheight" value="pixel"/>
+					<property name="com.jaspersoft.studio.unit.width" value="px"/>
+				</reportElement>
+				<box>
+					<topPen lineWidth="0.0" lineStyle="Solid" lineColor="#000000"/>
+					<leftPen lineWidth="0.0" lineStyle="Solid" lineColor="#000000"/>
+					<bottomPen lineWidth="0.0" lineStyle="Solid" lineColor="#000000"/>
+					<rightPen lineWidth="0.0" lineStyle="Solid" lineColor="#000000"/>
+				</box>
+				<textElement textAlignment="Center" verticalAlignment="Middle">
+					<font size="12" isBold="true"/>
+					<paragraph leftIndent="2"/>
+				</textElement>
+				<textFieldExpression><![CDATA[$P{dateHeader}]]></textFieldExpression>
+			</textField>
+			<textField isBlankWhenNull="true">
+				<reportElement x="90" y="18" width="368" height="18" uuid="5ebe7894-1e17-4a00-b4f3-64bd9fe0784b">
+					<property name="com.jaspersoft.studio.unit.height" value="px"/>
+					<property name="com.jaspersoft.studio.unit.width" value="px"/>
+				</reportElement>
+				<textElement textAlignment="Center">
+					<paragraph spacingBefore="3"/>
+				</textElement>
+				<textFieldExpression><![CDATA[$P{companyAddress}]]></textFieldExpression>
+			</textField>
+			<textField isBlankWhenNull="true">
+				<reportElement x="90" y="0" width="368" height="18" uuid="c1bb4ce0-27d2-4d3c-8023-cb9afaea5464"/>
+				<textElement textAlignment="Center">
+					<font size="14" isBold="true"/>
+				</textElement>
+				<textFieldExpression><![CDATA[$P{companyName}]]></textFieldExpression>
+			</textField>
+			<textField isBlankWhenNull="true">
+				<reportElement x="90" y="36" width="368" height="18" uuid="d2cb2f2c-97d6-4165-bc63-83cb667a1bb0">
+					<property name="com.jaspersoft.studio.unit.width" value="px"/>
+				</reportElement>
+				<textElement textAlignment="Center" verticalAlignment="Middle">
+					<font size="12" isBold="true"/>
+					<paragraph lineSpacing="1_1_2"/>
+				</textElement>
+				<textFieldExpression><![CDATA[$P{reportHeader}]]></textFieldExpression>
+			</textField>
+		</band>
+	</title>
+	<columnHeader>
+		<band height="30" splitType="Stretch">
+			<staticText>
+				<reportElement x="0" y="0" width="82" height="30" uuid="04769ea1-6a0b-47da-bb8c-bc29f008219d">
+					<property name="com.jaspersoft.studio.spreadsheet.connectionID" value="f11dae08-b6d0-4748-9854-3519c8e4bcf5"/>
+				</reportElement>
+				<box>
+					<topPen lineWidth="1.0" lineStyle="Solid" lineColor="#000000"/>
+					<leftPen lineWidth="1.0" lineStyle="Solid" lineColor="#000000"/>
+					<bottomPen lineWidth="1.0" lineStyle="Solid" lineColor="#000000"/>
+					<rightPen lineWidth="1.0" lineStyle="Solid" lineColor="#000000"/>
+				</box>
+				<textElement textAlignment="Center" verticalAlignment="Middle">
+					<font isBold="true"/>
+				</textElement>
+				<text><![CDATA[Zone]]></text>
+			</staticText>
+			<staticText>
+				<reportElement x="82" y="0" width="68" height="30" uuid="861e04d9-b4be-46c6-8140-e2bb0e4cfb87">
+					<property name="com.jaspersoft.studio.spreadsheet.connectionID" value="959b1ecb-9706-4bc1-8377-27d0f0b000e5"/>
+					<property name="com.jaspersoft.studio.unit.width" value="px"/>
+				</reportElement>
+				<box>
+					<pen lineWidth="0.03"/>
+					<topPen lineWidth="0.03" lineStyle="Solid" lineColor="#000000"/>
+					<leftPen lineWidth="0.03" lineStyle="Solid" lineColor="#000000"/>
+					<bottomPen lineWidth="0.03" lineStyle="Solid" lineColor="#000000"/>
+					<rightPen lineWidth="0.03" lineStyle="Solid" lineColor="#000000"/>
+				</box>
+				<textElement textAlignment="Center" verticalAlignment="Middle">
+					<font isBold="true"/>
+				</textElement>
+				<text><![CDATA[Number of Invoice]]></text>
+			</staticText>
+			<staticText>
+				<reportElement x="270" y="0" width="158" height="30" uuid="28148909-0491-4424-a040-2044685ba52d">
+					<property name="com.jaspersoft.studio.spreadsheet.connectionID" value="64ff7c3f-7670-4e07-819a-0c2f4b516469"/>
+					<property name="com.jaspersoft.studio.unit.width" value="px"/>
+				</reportElement>
+				<box>
+					<pen lineWidth="0.03"/>
+					<topPen lineWidth="0.03" lineStyle="Solid" lineColor="#000000"/>
+					<leftPen lineWidth="0.03" lineStyle="Solid" lineColor="#000000"/>
+					<bottomPen lineWidth="0.03" lineStyle="Solid" lineColor="#000000"/>
+					<rightPen lineWidth="0.03" lineStyle="Solid" lineColor="#000000"/>
+				</box>
+				<textElement textAlignment="Center" verticalAlignment="Middle">
+					<font isBold="true"/>
+				</textElement>
+				<text><![CDATA[Collection Amount]]></text>
+			</staticText>
+			<staticText>
+				<reportElement x="150" y="0" width="120" height="30" uuid="d33b3126-fa28-4aa1-a3e7-b6b7ea2b83ef">
+					<property name="com.jaspersoft.studio.spreadsheet.connectionID" value="9455c82e-30fe-40ca-8ab7-90f6db45d83f"/>
+				</reportElement>
+				<box>
+					<pen lineWidth="0.03"/>
+					<topPen lineWidth="0.03" lineStyle="Solid" lineColor="#000000"/>
+					<leftPen lineWidth="0.03" lineStyle="Solid" lineColor="#000000"/>
+					<bottomPen lineWidth="0.03" lineStyle="Solid" lineColor="#000000"/>
+					<rightPen lineWidth="0.03" lineStyle="Solid" lineColor="#000000"/>
+				</box>
+				<textElement textAlignment="Center" verticalAlignment="Middle">
+					<font isBold="true"/>
+				</textElement>
+				<text><![CDATA[Net Invoice Amount]]></text>
+			</staticText>
+			<staticText>
+				<reportElement x="428" y="0" width="92" height="30" uuid="131c8c0d-4ed4-4222-a55c-f714caab1649">
+					<property name="com.jaspersoft.studio.spreadsheet.connectionID" value="25b9f501-5a2f-4496-b19b-04399b0ff7cc"/>
+					<property name="com.jaspersoft.studio.unit.width" value="px"/>
+				</reportElement>
+				<box>
+					<pen lineWidth="0.03"/>
+					<topPen lineWidth="0.03" lineStyle="Solid" lineColor="#000000"/>
+					<leftPen lineWidth="0.03" lineStyle="Solid" lineColor="#000000"/>
+					<bottomPen lineWidth="0.03" lineStyle="Solid" lineColor="#000000"/>
+					<rightPen lineWidth="0.03" lineStyle="Solid" lineColor="#000000"/>
+				</box>
+				<textElement textAlignment="Center" verticalAlignment="Middle">
+					<font isBold="true"/>
+					<paragraph lineSpacingSize="1.0"/>
+				</textElement>
+				<text><![CDATA[Collection Days]]></text>
+			</staticText>
+		</band>
+	</columnHeader>
+	<pageFooter>
+		<band height="24" splitType="Stretch">
+			<textField pattern="dd-MMM-yyyy HH:mm a" isBlankWhenNull="true">
+				<reportElement x="400" y="12" width="120" height="12" uuid="0605959f-0521-4a50-804e-1abcbad7ddb9">
+					<property name="com.jaspersoft.studio.unit.width" value="px"/>
+					<property name="com.jaspersoft.studio.unit.y" value="pixel"/>
+					<property name="com.jaspersoft.studio.unit.x" value="px"/>
+					<property name="com.jaspersoft.studio.unit.height" value="px"/>
+				</reportElement>
+				<textElement verticalAlignment="Middle">
+					<font fontName="SansSerif" size="8" isBold="false"/>
+				</textElement>
+				<textFieldExpression><![CDATA[new java.util.Date()]]></textFieldExpression>
+			</textField>
+			<textField isBlankWhenNull="true">
+				<reportElement x="330" y="12" width="70" height="12" uuid="7a5303d5-ad65-42d4-acd9-25099fb2fd5f">
+					<property name="com.jaspersoft.studio.unit.x" value="px"/>
+					<property name="com.jaspersoft.studio.unit.height" value="px"/>
+				</reportElement>
+				<textElement textAlignment="Left" verticalAlignment="Middle">
+					<font fontName="SansSerif" size="8" isBold="false"/>
+				</textElement>
+				<textFieldExpression><![CDATA["Date & Time :"]]></textFieldExpression>
+			</textField>
+			<textField pattern="dd-MMM-yyyy HH:mm:ss" isBlankWhenNull="true">
+				<reportElement x="400" y="0" width="120" height="12" uuid="3976f63a-6f66-4c48-b007-21ffd0f91270">
+					<property name="com.jaspersoft.studio.unit.width" value="px"/>
+					<property name="com.jaspersoft.studio.unit.x" value="px"/>
+					<property name="com.jaspersoft.studio.unit.height" value="px"/>
+				</reportElement>
+				<textElement verticalAlignment="Middle">
+					<font fontName="SansSerif" size="8" isBold="false"/>
+				</textElement>
+				<textFieldExpression><![CDATA[$P{printedBy}]]></textFieldExpression>
+			</textField>
+			<textField isBlankWhenNull="true">
+				<reportElement x="330" y="0" width="70" height="12" uuid="794a5803-07cb-46fa-bab8-7942b202509e">
+					<property name="com.jaspersoft.studio.unit.x" value="px"/>
+					<property name="com.jaspersoft.studio.unit.width" value="px"/>
+					<property name="com.jaspersoft.studio.unit.height" value="px"/>
+				</reportElement>
+				<textElement textAlignment="Left" verticalAlignment="Middle">
+					<font fontName="SansSerif" size="8" isBold="false"/>
+				</textElement>
+				<textFieldExpression><![CDATA["Printed By :"]]></textFieldExpression>
+			</textField>
+			<textField pattern="dd-MMM-yyyy HH:mm:ss" isBlankWhenNull="true">
+				<reportElement x="0" y="12" width="150" height="12" uuid="64502f1e-8818-4c0a-a1ed-3abd09c75aec">
+					<property name="com.jaspersoft.studio.unit.height" value="px"/>
+				</reportElement>
+				<textElement verticalAlignment="Middle">
+					<font fontName="SansSerif" size="8" isBold="false"/>
+				</textElement>
+				<textFieldExpression><![CDATA[$P{productOwner}]]></textFieldExpression>
+			</textField>
+			<textField evaluationTime="Report" isBlankWhenNull="true">
+				<reportElement x="247" y="12" width="54" height="12" uuid="c3492f5c-3473-49a2-8d10-d42e01e16484">
+					<property name="com.jaspersoft.studio.unit.height" value="px"/>
+				</reportElement>
+				<box>
+					<topPen lineWidth="0.0" lineStyle="Solid" lineColor="#000000"/>
+					<leftPen lineWidth="0.0" lineStyle="Solid" lineColor="#000000"/>
+					<bottomPen lineWidth="0.0" lineStyle="Solid" lineColor="#000000"/>
+					<rightPen lineWidth="0.0" lineStyle="Solid" lineColor="#000000"/>
+				</box>
+				<textElement textAlignment="Left">
+					<font fontName="SansSerif" size="8" isBold="false"/>
+				</textElement>
+				<textFieldExpression><![CDATA["  of " + $V{PAGE_NUMBER}]]></textFieldExpression>
+			</textField>
+			<textField isBlankWhenNull="true">
+				<reportElement x="202" y="12" width="45" height="12" uuid="d7b41574-f25e-4ecd-85b1-9536fdb53a69">
+					<property name="com.jaspersoft.studio.unit.width" value="px"/>
+				</reportElement>
+				<box>
+					<topPen lineWidth="0.0" lineStyle="Solid" lineColor="#000000"/>
+					<leftPen lineWidth="0.0" lineStyle="Solid" lineColor="#000000"/>
+					<bottomPen lineWidth="0.0" lineStyle="Solid" lineColor="#000000"/>
+					<rightPen lineWidth="0.0" lineStyle="Solid" lineColor="#000000"/>
+				</box>
+				<textElement textAlignment="Right">
+					<font fontName="SansSerif" size="8" isBold="false"/>
+				</textElement>
+				<textFieldExpression><![CDATA["Page " + $V{PAGE_NUMBER}]]></textFieldExpression>
+			</textField>
+		</band>
+	</pageFooter>
+	<summary>
+		<band height="30">
+			<staticText>
+				<reportElement x="0" y="0" width="82" height="30" uuid="ddc428a4-cc43-46f6-864e-32a6cbda0a6c">
+					<property name="com.jaspersoft.studio.unit.leftIndent" value="px"/>
+				</reportElement>
+				<box>
+					<topPen lineWidth="1.0"/>
+					<leftPen lineWidth="1.0"/>
+					<bottomPen lineWidth="1.0"/>
+					<rightPen lineWidth="0.03"/>
+				</box>
+				<textElement textAlignment="Left" verticalAlignment="Middle">
+					<font isBold="true"/>
+					<paragraph leftIndent="1"/>
+				</textElement>
+				<text><![CDATA[Grand Total]]></text>
+			</staticText>
+			<textField pattern="#,##0.00#" isBlankWhenNull="true">
+				<reportElement x="270" y="0" width="158" height="30" uuid="b59a4153-bcc9-4484-a92b-e0207c1deb4b">
+					<property name="com.jaspersoft.studio.spreadsheet.connectionID" value="64ff7c3f-7670-4e07-819a-0c2f4b516469"/>
+					<property name="com.jaspersoft.studio.unit.width" value="px"/>
+				</reportElement>
+				<box rightPadding="2">
+					<topPen lineWidth="0.03" lineStyle="Solid" lineColor="#000000"/>
+					<leftPen lineWidth="0.03" lineStyle="Solid" lineColor="#000000"/>
+					<bottomPen lineWidth="0.03" lineStyle="Solid" lineColor="#000000"/>
+					<rightPen lineWidth="0.03" lineStyle="Solid" lineColor="#000000"/>
+				</box>
+				<textElement textAlignment="Right" verticalAlignment="Middle">
+					<paragraph rightIndent="2"/>
+				</textElement>
+				<textFieldExpression><![CDATA[$V{sumOfNetCollectionAmount}]]></textFieldExpression>
+			</textField>
+			<textField isBlankWhenNull="true">
+				<reportElement x="428" y="0" width="92" height="30" uuid="5e23029e-5fdb-4a47-80cf-e4475a879870">
+					<property name="com.jaspersoft.studio.spreadsheet.connectionID" value="25b9f501-5a2f-4496-b19b-04399b0ff7cc"/>
+					<property name="com.jaspersoft.studio.unit.width" value="px"/>
+				</reportElement>
+				<box>
+					<topPen lineWidth="0.03" lineStyle="Solid" lineColor="#000000"/>
+					<leftPen lineWidth="0.03" lineStyle="Solid" lineColor="#000000"/>
+					<bottomPen lineWidth="0.03" lineStyle="Solid" lineColor="#000000"/>
+					<rightPen lineWidth="0.03" lineStyle="Solid" lineColor="#000000"/>
+				</box>
+				<textElement textAlignment="Center" verticalAlignment="Middle"/>
+				<textFieldExpression><![CDATA[$V{averageCollectionDays}]]></textFieldExpression>
+			</textField>
+			<textField pattern="#,##0.00#" isBlankWhenNull="true">
+				<reportElement isPrintRepeatedValues="false" x="150" y="0" width="120" height="30" uuid="53b448be-3048-4ff6-8c4c-92d84959d681">
+					<property name="com.jaspersoft.studio.spreadsheet.connectionID" value="9455c82e-30fe-40ca-8ab7-90f6db45d83f"/>
+				</reportElement>
+				<box>
+					<topPen lineWidth="0.03" lineStyle="Solid" lineColor="#000000"/>
+					<leftPen lineWidth="0.03" lineStyle="Solid" lineColor="#000000"/>
+					<bottomPen lineWidth="0.03" lineStyle="Solid" lineColor="#000000"/>
+					<rightPen lineWidth="0.03" lineStyle="Solid" lineColor="#000000"/>
+				</box>
+				<textElement textAlignment="Right" verticalAlignment="Middle">
+					<paragraph rightIndent="2"/>
+				</textElement>
+				<textFieldExpression><![CDATA[$V{sumOfNetInvoiceAmount}]]></textFieldExpression>
+			</textField>
+			<textField isBlankWhenNull="true">
+				<reportElement isPrintRepeatedValues="false" x="82" y="0" width="68" height="30" uuid="96749f1a-59b4-4dd6-9626-1d10ade4d0ea">
+					<property name="com.jaspersoft.studio.spreadsheet.connectionID" value="959b1ecb-9706-4bc1-8377-27d0f0b000e5"/>
+					<property name="com.jaspersoft.studio.unit.width" value="px"/>
+				</reportElement>
+				<box>
+					<topPen lineWidth="0.03" lineStyle="Solid" lineColor="#000000"/>
+					<leftPen lineWidth="0.03" lineStyle="Solid" lineColor="#000000"/>
+					<bottomPen lineWidth="0.03" lineStyle="Solid" lineColor="#000000"/>
+					<rightPen lineWidth="0.03" lineStyle="Solid" lineColor="#000000"/>
+				</box>
+				<textElement textAlignment="Center" verticalAlignment="Middle"/>
+				<textFieldExpression><![CDATA[$V{numberOfInvoice}]]></textFieldExpression>
+			</textField>
+		</band>
+	</summary>
+</jasperReport>

@@ -1,0 +1,754 @@
+/*
+* @author Newaz Sharif
+* @since 21st April, 2022
+*/
+
+SET max_sp_recursion_depth=255;
+DELIMITER
+DROP PROCEDURE IF EXISTS SNC_SALES_TEAM;
+DELIMITER
+
+/*To Get Sales Team From a Sales Officer*/
+CREATE PROCEDURE SNC_SALES_TEAM(IN salesOfficerUserId bigint(11))
+
+
+begin
+
+     DECLARE child_id int;
+     DECLARE prev_id int;
+     SET prev_id = salesOfficerUserId;
+     SET child_id = 0;
+
+     begin
+         DECLARE EXIT HANDLER FOR SQLEXCEPTION SELECT 'SQLException encountered';
+
+         SELECT reporting_to_id into child_id FROM reporting_manager WHERE
+                            application_user_id = salesOfficerUserId
+                            and to_date is null and is_active=1 and is_deleted=0;
+
+         drop temporary table if exists sales_team;
+         create TEMPORARY  table IF NOT EXISTS sales_team as
+                            (select * from reporting_manager where 1=0);
+
+
+        if exists(select  * from reporting_manager where application_user_id=prev_id and is_active=1) then
+                REPEAT
+                   insert into sales_team select * from reporting_manager where
+                                application_user_id=prev_id and to_date is null
+                                         and is_active=1 and is_deleted=0;
+                   SET prev_id = child_id;
+                   SET child_id = 0;
+
+                   SELECT reporting_to_id into child_id from reporting_manager where
+                             application_user_id=prev_id and to_date is null
+                                    and is_active=1 and is_deleted=0;
+
+                   UNTIL prev_id IS NULL
+                END REPEAT;
+        end if;
+        select * from sales_team;
+     end;
+end;
+
+
+DELIMITER
+DROP PROCEDURE IF EXISTS SNC_SALES_RESPONSIBLE_TEAM;
+DELIMITER
+/*To Get Sales Responsible Team From a Booking No*/
+CREATE PROCEDURE SNC_SALES_RESPONSIBLE_TEAM(IN bookingNo VARCHAR(60))
+begin
+     DECLARE bookingDate date;
+     DECLARE salesOfficer bigint;
+
+     begin
+         DECLARE EXIT HANDLER FOR SQLEXCEPTION SELECT 'SQLException encountered';
+
+         SELECT booking_date, sales_officer_id into bookingDate, salesOfficer FROM sales_booking
+                WHERE booking_no = bookingNo;
+         create TEMPORARY  table IF NOT EXISTS sales_responsible as
+                (select * from reporting_manager where 1=0);
+
+         truncate table sales_responsible;
+
+         CALL SNC_SALES_TEAM(salesOfficer);
+
+         insert into sales_responsible select * from sales_team where from_date <= bookingDate
+            and to_date >= bookingDate;
+
+    end;
+end;
+
+
+DELIMITER
+DROP PROCEDURE IF EXISTS SNC_SALES_OFFICER_HIERARCHY;
+DELIMITER
+
+/*To Get Sales Officer Hierarchy */
+CREATE PROCEDURE SNC_SALES_OFFICER_HIERARCHY ( IN salesOfficerUserId bigint(11))
+begin
+
+    declare done tinyint unsigned default 0;
+    declare tree_depth smallint unsigned default 0;
+
+    begin
+        /*DECLARE EXIT HANDLER FOR SQLEXCEPTION SELECT 'SQLException encountered';*/
+        drop temporary table if exists sales_team_hierarchy;
+        drop temporary table if exists tmp;
+        create temporary table sales_team_hierarchy(
+             application_user_id bigint unsigned,
+             reporting_to_id bigint unsigned,
+             depth smallint unsigned default 0
+        )engine = memory;
+
+        if exists(select application_user_id, reporting_to_id
+                   from reporting_manager where reporting_to_id = salesOfficerUserId
+                        and to_date is null and is_active=1 and is_deleted=0) then
+
+            insert into sales_team_hierarchy select application_user_id, reporting_to_id,
+                   tree_depth from reporting_manager where reporting_to_id = salesOfficerUserId
+                   and to_date is null and is_active=1 and is_deleted=0;
+        else
+            insert into sales_team_hierarchy select application_user_id, reporting_to_id,
+                   tree_depth from reporting_manager where application_user_id = salesOfficerUserId
+                   and to_date is null and is_active=1 and is_deleted=0;
+        end if;
+
+        create temporary table tmp engine=memory select * from sales_team_hierarchy;
+
+        while not done do
+
+            if exists(select 1 from reporting_manager rm inner join tmp sth
+                    on rm.reporting_to_id = sth.application_user_id and sth.depth = tree_depth) then
+
+                insert into sales_team_hierarchy
+                    select rm.application_user_id, rm.reporting_to_id, tree_depth + 1
+                        from reporting_manager rm
+                    inner join tmp on rm.reporting_to_id = tmp.application_user_id and tmp.depth = tree_depth;
+                         set tree_depth = tree_depth + 1;
+
+                truncate table tmp;
+                insert into tmp select * from sales_team_hierarchy where depth = tree_depth;
+
+            else
+                set done = 1;
+            end if;
+
+        end while;
+            insert into sales_team_hierarchy select application_user_id, reporting_to_id,
+                   tree_depth from reporting_manager where application_user_id = salesOfficerUserId
+                   and to_date is null and is_active=1 and is_deleted=0;
+        /*select
+              rm.application_user_id as child, rmc.application_user_id as parent, sth.depth
+              from sales_team_hierarchy sth
+              inner join reporting_manager rm on sth.application_user_id = rm.application_user_id
+              left outer join reporting_manager rmc on sth.reporting_to_id = rmc.application_user_id
+              order by sth.depth, sth.application_user_id;
+
+        drop temporary table if exists sales_team_hierarchy;
+        drop temporary table if exists tmp;*/
+    end;
+end;
+
+DELIMITER
+DROP PROCEDURE IF EXISTS SNC_SO_WISE_SALES_TARGET;
+DELIMITER
+
+/*To Get Sales Officer Wise Sales Target */
+CREATE PROCEDURE SNC_SO_WISE_SALES_TARGET (IN salesOfficerUserId bigint(11),
+        IN month int(11), IN year VARCHAR(20))
+
+begin
+        /*declare done tinyint unsigned default 0;
+        declare depth smallint unsigned default 0;
+
+        create temporary table sales_team_hierarchy(
+             application_user_id bigint unsigned,
+             reporting_to_id bigint unsigned,
+             depth smallint unsigned default 0
+        )engine = memory;
+
+        if exists(select application_user_id, reporting_to_id,
+                  depth from reporting_manager where reporting_to_id = salesOfficerUserId) then
+            insert into sales_team_hierarchy select application_user_id, reporting_to_id,
+                   depth from reporting_manager where reporting_to_id = salesOfficerUserId;
+        else
+            insert into sales_team_hierarchy select application_user_id, reporting_to_id,
+                   depth from reporting_manager where application_user_id = salesOfficerUserId;
+        end if;
+
+        create temporary table tmp engine=memory select * from sales_team_hierarchy;
+
+
+        while not done do
+
+            if exists( select 1 from reporting_manager rm inner join sales_team_hierarchy sth
+                    on rm.reporting_to_id = sth.application_user_id and sth.depth = depth) then
+
+                insert into sales_team_hierarchy
+                    select rm.application_user_id, rm.reporting_to_id, depth + 1
+                        from reporting_manager rm
+                    inner join tmp on rm.reporting_to_id = tmp.application_user_id;
+                         set depth = depth + 1;
+
+                truncate table tmp;
+                insert into tmp select * from sales_team_hierarchy where depth = depth;
+
+            else
+                set done = 1;
+            end if;
+
+        end while;*/
+
+        begin
+            DECLARE EXIT HANDLER FOR SQLEXCEPTION SELECT 'SQLException encountered';
+
+            CALL SNC_SALES_OFFICER_HIERARCHY(salesOfficerUserId);
+
+            select ifnull(sum(mwsab.target_value),0) as sales_target from
+                    month_wise_sales_and_collection_budget as mwsab
+                inner join (select
+                    rm.application_user_id as child from sales_team_hierarchy sth
+                    inner join reporting_manager rm on sth.application_user_id = rm.application_user_id
+                    left outer join reporting_manager rmc on sth.reporting_to_id = rmc.application_user_id
+                    order by sth.depth, sth.application_user_id) as sth on mwsab.sales_officer_id = sth.child
+                    where mwsab.approval_status = "APPROVED" and mwsab.is_active=1 and mwsab.is_deleted=0
+                    and mwsab.month = month and mwsab.year = year;
+
+            drop temporary table if exists sales_team_hierarchy;
+            drop temporary table if exists tmp;
+        end;
+end;
+
+DELIMITER
+DROP PROCEDURE IF EXISTS SNC_DISTRIBUTOR_WISE_SO_SALES_TARGET;
+DELIMITER
+
+/*To Get Sales Officer Wise Sales Target */
+CREATE PROCEDURE SNC_DISTRIBUTOR_WISE_SO_SALES_TARGET (IN salesOfficerUserId bigint(11),
+        IN month int(11), IN year VARCHAR(20))
+
+begin
+        declare done tinyint unsigned default 0;
+        declare depth smallint unsigned default 0;
+
+        begin
+            DECLARE EXIT HANDLER FOR SQLEXCEPTION SELECT 'SQLException encountered';
+
+            create temporary table sales_team_hierarchy(
+                 application_user_id bigint unsigned,
+                 reporting_to_id bigint unsigned,
+                 depth smallint unsigned default 0
+            )engine = memory;
+
+            if exists(select application_user_id, reporting_to_id,
+                      depth from reporting_manager where reporting_to_id = salesOfficerUserId) then
+                insert into sales_team_hierarchy select application_user_id, reporting_to_id,
+                       depth from reporting_manager where reporting_to_id = salesOfficerUserId;
+            else
+                insert into sales_team_hierarchy select application_user_id, reporting_to_id,
+                       depth from reporting_manager where application_user_id = salesOfficerUserId;
+            end if;
+
+            create temporary table tmp engine=memory select * from sales_team_hierarchy;
+
+            while not done do
+
+                if exists( select 1 from reporting_manager rm inner join sales_team_hierarchy sth
+                        on rm.reporting_to_id = sth.application_user_id and sth.depth = depth) then
+
+                    insert into sales_team_hierarchy
+                        select rm.application_user_id, rm.reporting_to_id, depth + 1
+                            from reporting_manager rm
+                        inner join tmp on rm.reporting_to_id = tmp.application_user_id;
+                             set depth = depth + 1;
+
+                    truncate table tmp;
+                    insert into tmp select * from sales_team_hierarchy where depth = depth;
+
+                else
+                    set done = 1;
+                end if;
+
+            end while;
+
+            select ifnull(sum(mwsab.target_value),0) as sales_target from
+                    month_wise_sales_and_collection_budget as mwsab
+                inner join (select
+                    rm.application_user_id as child from sales_team_hierarchy sth
+                    inner join reporting_manager rm on sth.application_user_id = rm.application_user_id
+                    left outer join reporting_manager rmc on sth.reporting_to_id = rmc.application_user_id
+                    inner join distributor_sales_officer_map dsom on
+                    sth.application_user_id = dsom.sales_officer_id  order by sth.depth, sth.application_user_id) as sth on mwsab.distributor_id = sth.child
+                    where mwsab.approval_status = "APPROVED" and mwsab.is_active=1 and mwsab.is_deleted=0
+                    and mwsab.month = month and mwsab.year = year;
+
+            drop temporary table if exists sales_team_hierarchy;
+            drop temporary table if exists tmp;
+        end;
+end;
+
+DELIMITER
+DROP PROCEDURE IF EXISTS SNC_LOCATION_WISE_SO_SALES_TARGET;
+DELIMITER
+
+/*To Get Sales Officer Wise Sales Target */
+CREATE PROCEDURE SNC_LOCATION_WISE_SO_SALES_TARGET (IN salesOfficerUserId bigint(11),
+        IN month int(11), IN year VARCHAR(20))
+
+begin
+        begin
+            DECLARE EXIT HANDLER FOR SQLEXCEPTION SELECT 'SQLException encountered';
+
+            CALL SNC_SALES_OFFICER_HIERARCHY(salesOfficerUserId);
+
+            select ifnull(sum(mwsab.target_value),0) as sales_target from
+                    month_wise_sales_and_collection_budget as mwsab
+                inner join (select
+                    lmm.location_id as child from sales_team_hierarchy sth
+                    inner join reporting_manager rm on sth.application_user_id = rm.application_user_id
+                    left outer join reporting_manager rmc on sth.reporting_to_id = rmc.application_user_id
+                    inner join location_manager_map lmm on
+                    sth.application_user_id = lmm.application_user_id  order by sth.depth, sth.application_user_id) as sth on mwsab.location_id = sth.child
+                    where mwsab.approval_status = "APPROVED" and mwsab.is_active=1 and mwsab.is_deleted=0
+                    and mwsab.month = month and mwsab.year = year;
+
+            drop temporary table if exists sales_team_hierarchy;
+            drop temporary table if exists tmp;
+        end;
+end;
+
+DELIMITER
+DROP PROCEDURE IF EXISTS SNC_LOCATION_HIERARCHY;
+DELIMITER
+
+/*To Get Sales Officer Hierarchy */
+CREATE PROCEDURE SNC_LOCATION_HIERARCHY ( IN locationId bigint(11))
+begin
+
+    declare done tinyint unsigned default 0;
+    declare v_depth smallint unsigned default 0;
+
+    begin
+
+        create temporary table location_hierarchy(
+             location_id bigint unsigned,
+             parent_id bigint unsigned,
+             depth smallint unsigned default 0
+        )engine = memory;
+
+        if exists(select id, parent_id
+                 from location where parent_id = locationId
+                 and is_active=1 and is_deleted=0) then
+            insert into location_hierarchy select id, parent_id,
+                   v_depth from location where parent_id = locationId
+                   and is_active=1 and is_deleted=0;
+        else
+            insert into location_hierarchy select id, parent_id,
+                   v_depth from location where id = locationId
+                   and is_active=1 and is_deleted=0;
+        end if;
+
+        create temporary table tmp engine=memory select * from location_hierarchy;
+
+        while not done do
+
+            if exists(select 1 from location loc inner join location_hierarchy loch
+                    on loc.parent_id = loch.location_id and loch.depth = v_depth) then
+
+                insert into location_hierarchy
+                    select loc.id, loc.parent_id, v_depth + 1
+                        from location loc
+                    inner join tmp on loc.parent_id = tmp.location_id and tmp.depth = v_depth;
+                         set v_depth = v_depth + 1;
+
+                truncate table tmp;
+                insert into tmp select * from location_hierarchy where depth = v_depth;
+
+            else
+                set done = 1;
+            end if;
+
+        end while;
+
+        insert into location_hierarchy select id, parent_id,
+                           v_depth from location where id = locationId
+                                    and is_active=1 and is_deleted=0;
+    end;
+end;
+
+DELIMITER
+DROP PROCEDURE IF EXISTS SNC_SO_LOCATION_TREE;
+DELIMITER
+
+/*To Get Sales Officer Wise Sales Target */
+CREATE PROCEDURE SNC_SO_LOCATION_TREE (IN companyId bigint(11),
+                                       IN salesOfficerUserId bigint(11))
+
+begin
+        DECLARE locationId bigint;
+        begin
+            /*DECLARE EXIT HANDLER FOR SQLEXCEPTION SELECT 'SQLException encountered';*/
+
+            if exists(select location_id from location_manager_map where
+                             application_user_id = salesOfficerUserId
+                             and company_id = companyId
+                             and is_active=1 and is_deleted=0 and to_date is null) then
+
+                select location_id into locationId from location_manager_map where
+                             application_user_id = salesOfficerUserId
+                             and company_id = companyId
+                             and is_active=1 and is_deleted=0 and to_date is null;
+
+                CALL SNC_LOCATION_HIERARCHY(locationId);
+            else
+                select location_id into locationId from location_manager_map where
+                       application_user_id = (select reporting_to_id from reporting_manager
+                       where application_user_id = salesOfficerUserId and to_date is null)
+                       and company_id = companyId
+                       and is_active=1 and is_deleted=0 and to_date is null;
+                CALL SNC_LOCATION_HIERARCHY(locationId);
+            end if;
+
+            select loc.id,loc.parent_id as parentId, loc.name as locationName, lt.level locationTypeLevel
+                   from location_hierarchy loch inner join location loc
+                   inner join location_type lt on lt.id = loc.location_type_id
+                   on loch.location_id = loc.id order by loc.location_type_id, loc.id;
+
+            drop temporary table if exists location_hierarchy;
+            drop temporary table if exists tmp;
+        end;
+end;
+
+DELIMITER
+DROP PROCEDURE IF EXISTS SNC_SO_LIST_FROM_MANAGER;
+DELIMITER
+/*To Get Sales Officer List */
+CREATE PROCEDURE SNC_SO_LIST_FROM_MANAGER (IN salesOfficerUserId bigint(11))
+
+begin
+        DECLARE locationId bigint;
+        begin
+            /*DECLARE EXIT HANDLER FOR SQLEXCEPTION SELECT 'SQLException encountered';*/
+
+            CALL SNC_SALES_OFFICER_HIERARCHY(salesOfficerUserId);
+
+             select sth.application_user_id as salesOfficer from
+                (select application_user_id  from sales_team_hierarchy) as sth
+                            	inner join
+                (select rm.application_user_id from reporting_manager rm
+                    left join reporting_manager rmc on rm.application_user_id = rmc.reporting_to_id
+                    where rmc.application_user_id is null) as lmm
+                    on sth.application_user_id = lmm.application_user_id;
+
+            drop temporary table if exists sales_team_hierarchy;
+            drop temporary table if exists tmp;
+        end;
+end;
+
+DELIMITER
+DROP PROCEDURE IF EXISTS SNC_LOCATION_LIST_FROM_HIERARCHY;
+DELIMITER
+/*To Get Sales Officer List */
+CREATE PROCEDURE SNC_LOCATION_LIST_FROM_HIERARCHY (IN locationId bigint(11))
+
+begin
+
+        begin
+            /*DECLARE EXIT HANDLER FOR SQLEXCEPTION SELECT 'SQLException encountered';*/
+
+            CALL SNC_LOCATION_HIERARCHY(locationId);
+
+             select lh.location_id as locationId from
+                (select location_id  from location_hierarchy) as lh
+                            	inner join
+                (select loc.id from location loc
+                    left join location aloc on loc.id = aloc.parent_id where aloc.id is null) as lc
+                    on lh.location_id = lc.id;
+
+            drop temporary table if exists location_hierarchy;
+            drop temporary table if exists tmp;
+        end;
+end;
+
+DELIMITER
+DROP PROCEDURE IF EXISTS SNC_CHILD_LOCATION_HIERARCHY;
+DELIMITER
+CREATE PROCEDURE SNC_CHILD_LOCATION_HIERARCHY(in companyId bigint(11))
+ begin
+
+    DECLARE finished INTEGER DEFAULT 0;
+    DECLARE location_id VARCHAR(60);
+    DECLARE LocationIdCursor CURSOR FOR
+        select l1.id from (select lt.id from location lt inner join location_type ltp on lt.location_type_id = ltp.id
+        inner join organization org on ltp.location_tree_id = org.location_tree_id and org.id=companyId) as l1
+        left join (select lt.id, lt.parent_id from location lt inner join location_type ltp
+        on lt.location_type_id = ltp.id
+        inner join organization org on ltp.location_tree_id = org.location_tree_id and org.id=companyId) as l2
+        on l1.id = l2.parent_id where l2.id is null;
+    DECLARE CONTINUE HANDLER FOR NOT FOUND SET finished = 1;
+  begin
+
+   drop temporary table if exists loc_temp;
+   drop temporary table if exists location_hierarchy_tmp;
+   drop table if exists child_location_hierarchy;
+   create temporary table loc_temp(
+		     child_id bigint unsigned,
+		     parent_id bigint unsigned
+
+		)engine = memory;
+
+   create  temporary table location_hierarchy_tmp(
+		     id bigint unsigned,
+		     type_id bigint unsigned,
+		     parent_id bigint unsigned,
+		     name varchar(60),
+		     location_type varchar(60),
+		     level int(10)
+		)engine = memory;
+
+    OPEN LocationIdCursor;
+
+
+    locItr: LOOP
+   	FETCH LocationIdCursor INTO location_id;
+
+   	IF finished = 1 THEN
+
+      		LEAVE locItr;
+
+   	END IF;
+
+   	insert into loc_temp SELECT location_id,  T2.parent_id
+		FROM (
+		    SELECT
+			@parent_node AS _id,
+			(SELECT @parent_node := parent_id FROM location WHERE id = _id) AS parent_id,
+			@l := @l + 1 AS lvl
+		    FROM
+			(SELECT @parent_node := location_id, @l := 0) vars,
+			location m
+		    WHERE @parent_node is not null) T1
+		JOIN location T2
+		ON T1._id = T2.id
+		ORDER BY T1.lvl DESC;
+	 insert into loc_temp(child_id, parent_id) values(location_id,location_id);
+     END LOOP locItr;
+CLOSE LocationIdCursor;
+
+insert into location_hierarchy_tmp select  t.child_id id, lt.id type_id, t.parent_id, l.name, lt.name location_type,lt.level from location l inner join location_type lt on l.location_type_id = lt.id inner join (select child_id, parent_id from loc_temp) t on l.id = t.parent_id;
+
+SET @sql = NULL;
+SELECT
+  GROUP_CONCAT(DISTINCT
+    CONCAT(
+      'max(case when location_type = ''',
+      	location_type,
+      ''' then name end) ',
+      location_type
+
+    ) order by level
+  ) INTO @sql
+FROM
+  location_hierarchy_tmp;
+SET @sql = CONCAT('create table child_location_hierarchy engine=memory as SELECT id,', @sql, '
+                  FROM location_hierarchy_tmp
+                   GROUP BY id');
+
+PREPARE stmt FROM @sql;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
+end;
+end;
+
+DELIMITER
+DROP PROCEDURE IF EXISTS SNC_CATEGORY_HIERARCHY;
+DELIMITER
+
+CREATE PROCEDURE SNC_CATEGORY_HIERARCHY ( IN productCategoryId bigint(11))
+begin
+
+    declare done tinyint unsigned default 0;
+    declare v_depth smallint unsigned default 0;
+
+    begin
+
+        create temporary table category_hierarchy(
+             category_id bigint unsigned,
+             parent_id bigint unsigned,
+             depth smallint unsigned default 0
+        )engine = memory;
+
+        if exists(select id, parent_id
+                 from product_category where parent_id = productCategoryId
+                 and is_active=1 and is_deleted=0) then
+            insert into category_hierarchy select id, parent_id,
+                   v_depth from product_category where parent_id = productCategoryId
+                   and is_active=1 and is_deleted=0;
+        else
+            insert into category_hierarchy select id, parent_id,
+                   v_depth from product_category where id = productCategoryId
+                   and is_active=1 and is_deleted=0;
+        end if;
+
+        create temporary table category_tmp engine=memory select * from category_hierarchy;
+
+        while not done do
+
+            if exists(select 1 from product_category loc inner join category_hierarchy ctch
+                    on loc.parent_id = ctch.category_id and ctch.depth = v_depth) then
+
+                insert into category_hierarchy
+                    select loc.id, loc.parent_id, v_depth + 1
+                        from product_category loc
+                    inner join category_tmp on loc.parent_id = category_tmp.category_id and category_tmp.depth = v_depth;
+                         set v_depth = v_depth + 1;
+
+                truncate table category_tmp;
+                insert into category_tmp select * from category_hierarchy where depth = v_depth;
+
+            else
+                set done = 1;
+            end if;
+
+        end while;
+
+        insert into category_hierarchy select id, parent_id,
+                           v_depth from product_category where id = productCategoryId
+                                    and is_active=1 and is_deleted=0;
+    end;
+end;
+
+DELIMITER
+DROP PROCEDURE IF EXISTS SNC_PRODUCT_CATEGORY_LIST_FROM_HIERARCHY;
+DELIMITER
+CREATE PROCEDURE SNC_PRODUCT_CATEGORY_LIST_FROM_HIERARCHY (IN productCategoryId bigint(11))
+
+begin
+
+        begin
+            /*DECLARE EXIT HANDLER FOR SQLEXCEPTION SELECT 'SQLException encountered';*/
+
+            CALL SNC_CATEGORY_HIERARCHY(productCategoryId);
+
+             select lh.category_id as productCategoryId from
+                (select category_id  from category_hierarchy) as lh
+                            	inner join
+                (select procat.id from product_category procat
+                    left join product_category aprocat on procat.id = aprocat.parent_id where aprocat.id is null) as lc
+                    on lh.category_id = lc.id;
+
+            drop temporary table if exists category_hierarchy;
+            drop temporary table if exists category_tmp;
+        end;
+end;
+
+DELIMITER
+DROP PROCEDURE IF EXISTS SNC_PARENT_CATEGORY_PATH;
+DELIMITER
+CREATE PROCEDURE SNC_PARENT_CATEGORY_PATH(IN cat_id INT, OUT path TEXT)
+BEGIN
+    DECLARE catId VARCHAR(20);
+    DECLARE temppath TEXT;
+    DECLARE tempparent INT;
+    SET max_sp_recursion_depth = 255;
+    SELECT id, parent_id FROM product_category WHERE id=cat_id INTO catId, tempparent;
+    IF tempparent IS NULL
+    THEN
+        SET path = catId;
+    ELSE
+        CALL SNC_PARENT_CATEGORY_PATH(tempparent, temppath);
+        SET path = CONCAT(temppath, '/', catId);
+    END IF;
+END;
+
+DELIMITER
+DROP PROCEDURE IF EXISTS SNC_PRODUCT_CATEGORY_HIERARCHY;
+DELIMITER
+CREATE PROCEDURE `SNC_PRODUCT_CATEGORY_HIERARCHY`(in companyId bigint(11))
+BEGIN
+    DECLARE finished INTEGER DEFAULT 0;
+    DECLARE product_category_id VARCHAR(60);
+    DECLARE ProductCategoryCursor CURSOR FOR
+		select pc1.id from (select pc.id from product_category pc
+		inner join product_category_type pcp on pc.product_category_type_id = pcp.id and pc.company_id=companyId) as pc1
+        left join (select pc.id, pc.parent_id from product_category pc inner join product_category_type pcp
+        on pc.product_category_type_id = pcp.id and pc.company_id=companyId) as pc2
+        on pc1.id = pc2.parent_id where pc2.id is null;
+    DECLARE CONTINUE HANDLER FOR NOT FOUND SET finished = 1;
+  BEGIN
+
+   drop temporary table if exists pro_cat_temp;
+   drop temporary table if exists product_category_hierarchy_tmp;
+   drop table if exists child_product_category_hierarchy;
+   create temporary table pro_cat_temp(
+		     child_id bigint unsigned,
+		     parent_id bigint unsigned
+
+		)engine = memory;
+        CREATE temporary TABLE product_category_hierarchy_tmp (
+        id BIGINT UNSIGNED,
+        type_id BIGINT UNSIGNED,
+		parent_id BIGINT UNSIGNED,
+		name VARCHAR(60),
+		product_category_type_name VARCHAR(60),
+		level INT(10)
+	)  ENGINE=MEMORY;
+
+    OPEN ProductCategoryCursor;
+
+
+    locItr: LOOP
+   	FETCH ProductCategoryCursor INTO product_category_id;
+
+   	IF finished = 1 THEN
+
+      		LEAVE locItr;
+
+   	END IF;
+
+   	insert into pro_cat_temp SELECT product_category_id,  T2.parent_id
+		FROM (
+		    SELECT
+			@parent_node AS _id,
+			(SELECT @parent_node := parent_id FROM product_category WHERE id = _id) AS parent_id,
+			@l := @l + 1 AS lvl
+		    FROM
+			(SELECT @parent_node := product_category_id, @l := 0) vars,
+			product_category m
+		    WHERE @parent_node is not null) T1
+		JOIN product_category T2
+		ON T1._id = T2.id
+		ORDER BY T1.lvl DESC;
+	 insert into pro_cat_temp(child_id, parent_id) values(product_category_id,product_category_id);
+     END LOOP locItr;
+CLOSE ProductCategoryCursor;
+
+	insert into product_category_hierarchy_tmp
+	select  t.child_id id, lt.id type_id, t.parent_id, l.name, lt.name product_category_type_name,lt.level
+	from product_category l
+	inner join product_category_type lt on l.product_category_type_id = lt.id
+	inner join (select child_id, parent_id from pro_cat_temp) t on l.id = t.parent_id;
+
+SET @sql = NULL;
+SELECT
+    GROUP_CONCAT(DISTINCT CONCAT('max(case when type_id = ',
+                type_id,
+                ' then name end) ',
+                '`',
+                product_category_type_name,
+                '`')
+        ORDER BY level)
+INTO @sql FROM
+    product_category_hierarchy_tmp;
+
+SET @sql = CONCAT('create table child_product_category_hierarchy engine=memory as SELECT id,', @sql, '
+                  FROM product_category_hierarchy_tmp
+                   GROUP BY id');
+
+PREPARE stmt FROM @sql;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
+      drop temporary table if exists pro_cat_temp;
+      drop temporary table if exists product_category_hierarchy_tmp;
+END;
+END;

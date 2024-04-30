@@ -1,0 +1,451 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Created with Jaspersoft Studio version 6.20.0.final using JasperReports Library version 6.20.0-2bc7ab61c56f459e8176eb05c7705e145cd400ad  -->
+<jasperReport xmlns="http://jasperreports.sourceforge.net/jasperreports" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://jasperreports.sourceforge.net/jasperreports http://jasperreports.sourceforge.net/xsd/jasperreport.xsd" name="PerformanceReport" pageWidth="1050" pageHeight="612" orientation="Landscape" whenNoDataType="AllSectionsNoDetail" columnWidth="978" leftMargin="36" rightMargin="36" topMargin="36" bottomMargin="36" uuid="a0c424fd-c15c-4631-86f3-70485979d124">
+	<property name="com.jaspersoft.studio.data.sql.tables" value=""/>
+	<property name="com.jaspersoft.studio.data.defaultdataadapter" value="testDB"/>
+	<property name="com.jaspersoft.studio.unit." value="pixel"/>
+	<property name="com.jaspersoft.studio.unit.pageHeight" value="pixel"/>
+	<property name="com.jaspersoft.studio.unit.pageWidth" value="pixel"/>
+	<property name="com.jaspersoft.studio.unit.topMargin" value="pixel"/>
+	<property name="com.jaspersoft.studio.unit.bottomMargin" value="pixel"/>
+	<property name="com.jaspersoft.studio.unit.leftMargin" value="pixel"/>
+	<property name="com.jaspersoft.studio.unit.rightMargin" value="pixel"/>
+	<property name="com.jaspersoft.studio.unit.columnWidth" value="pixel"/>
+	<property name="com.jaspersoft.studio.unit.columnSpacing" value="pixel"/>
+	<parameter name="startDate" class="java.lang.String"/>
+	<parameter name="endDate" class="java.lang.String"/>
+	<parameter name="companyName" class="java.lang.String"/>
+	<parameter name="companyAddress" class="java.lang.String"/>
+	<parameter name="companyEmail" class="java.lang.String"/>
+	<parameter name="companyWeb" class="java.lang.String"/>
+	<parameter name="printedBy" class="java.lang.String"/>
+	<parameter name="printedByDesignation" class="java.lang.String"/>
+	<parameter name="dateHeader" class="java.lang.String"/>
+	<parameter name="companyLogo" class="java.io.InputStream"/>
+	<parameter name="companyId" class="java.lang.String"/>
+	<parameter name="isNational" class="java.lang.Boolean"/>
+	<parameter name="salesOfficerIds" class="java.util.Collection"/>
+	<parameter name="distributorIds" class="java.util.Collection"/>
+	<parameter name="isDistributorExist" class="java.lang.Boolean"/>
+	<parameter name="isSoExist" class="java.lang.Boolean"/>
+	<parameter name="locationIds" class="java.util.Collection"/>
+	<parameter name="reportType" class="java.lang.String"/>
+	<parameter name="productOwner" class="java.lang.String"/>
+	<queryString language="SQL">
+		<![CDATA[SELECT c.*
+     , d.distributor_name                                      distributor_name
+     , cl.credit_limit                                         creditLimit
+     , @totalSales := round(sum(si.invoice_amount), 2)         totalSales
+     , @totalCollection := round(sum(pi.collection_amount), 2) totalCollection
+     , round((@totalSales / cl.credit_limit) * 100, 2)         sales_percent
+     , round((@totalCollection / cl.credit_limit) * 100, 2)    collection_percent
+     , so.name soName 
+     , cl.company_id
+
+FROM location l
+         inner join child_location_hierarchy c
+                    on l.id = c.id
+         inner join location_manager_map lmm
+                    on l.id = lmm.location_id
+                        and l.is_active is true
+                        and l.is_deleted is false
+                         and lmm.company_id = $P{companyId}
+                         and( $P{isNational} is true or  $X{IN, lmm.location_id, locationIds} )
+         inner join reporting_manager rm
+                    on lmm.application_user_id = rm.reporting_to_id
+                        and lmm.is_active is true
+                        and lmm.is_deleted is false
+                        and rm.is_active is true
+                        and rm.is_deleted is false
+						and ( $P{isSoExist} is false or $X{IN, rm.application_user_id, salesOfficerIds} )
+         inner join application_user so
+                    on rm.application_user_id = so.id
+         inner join distributor_sales_officer_map dsom
+                    on so.id = dsom.sales_officer_id
+                        and dsom.is_active is true
+                        and dsom.is_deleted is false
+                        and dsom.company_id = $P{companyId}
+						and ( $P{isDistributorExist} is false or $X{IN, dsom.distributor_id, distributorIds} )
+         inner join distributor d
+                    on dsom.distributor_id = d.id
+         inner join credit_limit cl
+                    on d.id = cl.distributor_id
+                        and cl.is_active is true
+                        and cl.is_deleted is false
+                        and cl.credit_limit_term = 'LT'
+                         and cl.company_id = $P{companyId}
+         inner join sales_invoice si
+                    on si.distributor_id = cl.distributor_id
+                         and si.is_deleted is false
+                         and si.company_id = $P{companyId}
+						 and ( $P{startDate}  is null or si.invoice_date >= $P{startDate} )
+				         and ( $P{endDate} is null or si.invoice_date <= $P{endDate} )
+         inner join payment_collection pi
+                    on pi.distributor_id = cl.distributor_id
+                        and pi.is_deleted is false
+                        and pi.approval_status = 'APPROVED'
+                        and pi.company_id = $P{companyId}
+                        and ( $P{startDate}  is null or pi.payment_date >= $P{startDate} )
+						and ( $P{endDate} is null or pi.payment_date <= $P{endDate} )
+group by c.Area,
+         c.Zone,
+         c.Territory,
+         c.id,
+         d.id,
+         cl.credit_limit, 
+         so.name]]>
+	</queryString>
+	<field name="id" class="java.math.BigInteger">
+		<property name="com.jaspersoft.studio.field.name" value="id"/>
+		<property name="com.jaspersoft.studio.field.label" value="id"/>
+		<property name="com.jaspersoft.studio.field.tree.path" value="child_location_hierarchy"/>
+	</field>
+	<field name="Zone" class="java.lang.String">
+		<property name="com.jaspersoft.studio.field.name" value="Zone"/>
+		<property name="com.jaspersoft.studio.field.label" value="Zone"/>
+		<property name="com.jaspersoft.studio.field.tree.path" value="child_location_hierarchy"/>
+	</field>
+	<field name="Area" class="java.lang.String">
+		<property name="com.jaspersoft.studio.field.name" value="Area"/>
+		<property name="com.jaspersoft.studio.field.label" value="Area"/>
+		<property name="com.jaspersoft.studio.field.tree.path" value="child_location_hierarchy"/>
+	</field>
+	<field name="Territory" class="java.lang.String">
+		<property name="com.jaspersoft.studio.field.name" value="Territory"/>
+		<property name="com.jaspersoft.studio.field.label" value="Territory"/>
+		<property name="com.jaspersoft.studio.field.tree.path" value="child_location_hierarchy"/>
+	</field>
+	<field name="distributor_name" class="java.lang.String">
+		<property name="com.jaspersoft.studio.field.name" value="distributor_name"/>
+		<property name="com.jaspersoft.studio.field.label" value="distributor_name"/>
+		<property name="com.jaspersoft.studio.field.tree.path" value="distributor"/>
+	</field>
+	<field name="creditLimit" class="java.lang.Float">
+		<property name="com.jaspersoft.studio.field.name" value="credit_limit"/>
+		<property name="com.jaspersoft.studio.field.label" value="creditLimit"/>
+		<property name="com.jaspersoft.studio.field.tree.path" value="credit_limit"/>
+	</field>
+	<field name="totalSales" class="java.lang.Double">
+		<property name="com.jaspersoft.studio.field.name" value="totalSales"/>
+		<property name="com.jaspersoft.studio.field.label" value="totalSales"/>
+	</field>
+	<field name="totalCollection" class="java.lang.Double">
+		<property name="com.jaspersoft.studio.field.name" value="totalCollection"/>
+		<property name="com.jaspersoft.studio.field.label" value="totalCollection"/>
+	</field>
+	<field name="sales_percent" class="java.lang.Double">
+		<property name="com.jaspersoft.studio.field.name" value="sales_percent"/>
+		<property name="com.jaspersoft.studio.field.label" value="sales_percent"/>
+	</field>
+	<field name="collection_percent" class="java.lang.Double">
+		<property name="com.jaspersoft.studio.field.name" value="collection_percent"/>
+		<property name="com.jaspersoft.studio.field.label" value="collection_percent"/>
+	</field>
+	<field name="soName" class="java.lang.String">
+		<property name="com.jaspersoft.studio.field.name" value="name"/>
+		<property name="com.jaspersoft.studio.field.label" value="soName"/>
+		<property name="com.jaspersoft.studio.field.tree.path" value="application_user"/>
+	</field>
+	<field name="company_id" class="java.lang.Long">
+		<property name="com.jaspersoft.studio.field.name" value="company_id"/>
+		<property name="com.jaspersoft.studio.field.label" value="company_id"/>
+		<property name="com.jaspersoft.studio.field.tree.path" value="credit_limit"/>
+	</field>
+	<sortField name="Zone" order="Descending"/>
+	<sortField name="Area" order="Descending"/>
+	<sortField name="Territory" order="Descending"/>
+	<variable name="creditLimit5" class="java.lang.Float" resetType="Group" resetGroup="Group1" calculation="Sum">
+		<variableExpression><![CDATA[$F{creditLimit}]]></variableExpression>
+	</variable>
+	<variable name="totalSales4" class="java.lang.Double" resetType="Group" resetGroup="Group1" calculation="Sum">
+		<variableExpression><![CDATA[$F{totalSales}]]></variableExpression>
+	</variable>
+	<variable name="totalCollection4" class="java.lang.Double" resetType="Group" resetGroup="Group1" calculation="Sum">
+		<variableExpression><![CDATA[$F{totalCollection}]]></variableExpression>
+	</variable>
+	<variable name="sales_percent4" class="java.lang.Double" resetType="Group" resetGroup="Group1">
+		<variableExpression><![CDATA[($V{totalSales4}/$V{creditLimit5}) * 100]]></variableExpression>
+	</variable>
+	<variable name="collection_percent4" class="java.lang.Double" resetType="Group" resetGroup="Group1">
+		<variableExpression><![CDATA[($V{totalCollection4}/$V{creditLimit5})*100]]></variableExpression>
+	</variable>
+	<group name="Group1">
+		<groupExpression><![CDATA[$F{company_id}]]></groupExpression>
+		<groupFooter>
+			<band height="30">
+				<textField pattern="#,##0.00" isBlankWhenNull="true">
+					<reportElement x="1" y="0" width="209" height="30" uuid="e4c8babe-50d8-4a77-9156-9f53a0b9352d">
+						<property name="com.jaspersoft.studio.unit.width" value="px"/>
+					</reportElement>
+					<box rightPadding="2">
+						<topPen lineWidth="0.03"/>
+						<leftPen lineWidth="0.03"/>
+						<bottomPen lineWidth="0.03"/>
+						<rightPen lineWidth="0.03"/>
+					</box>
+					<textElement textAlignment="Right" verticalAlignment="Middle"/>
+					<textFieldExpression><![CDATA[$V{creditLimit5}]]></textFieldExpression>
+				</textField>
+				<textField pattern="#,##0.00" isBlankWhenNull="true">
+					<reportElement x="210" y="0" width="190" height="30" uuid="0087a7a6-ceb2-4fde-a4ee-b45a11df4dc3">
+						<property name="com.jaspersoft.studio.unit.x" value="pixel"/>
+					</reportElement>
+					<box rightPadding="2">
+						<topPen lineWidth="0.03"/>
+						<leftPen lineWidth="0.03"/>
+						<bottomPen lineWidth="0.03"/>
+						<rightPen lineWidth="0.03"/>
+					</box>
+					<textElement textAlignment="Right" verticalAlignment="Middle"/>
+					<textFieldExpression><![CDATA[$V{totalSales4}]]></textFieldExpression>
+				</textField>
+				<textField pattern="#,##0.00" isBlankWhenNull="true">
+					<reportElement x="400" y="0" width="180" height="30" uuid="48e45cab-ff3b-46d5-aa97-835079b66380"/>
+					<box rightPadding="2">
+						<pen lineWidth="0.03"/>
+						<topPen lineWidth="0.03"/>
+						<leftPen lineWidth="0.03"/>
+						<bottomPen lineWidth="0.03"/>
+						<rightPen lineWidth="0.03"/>
+					</box>
+					<textElement textAlignment="Right" verticalAlignment="Middle"/>
+					<textFieldExpression><![CDATA[$V{totalCollection4}]]></textFieldExpression>
+				</textField>
+				<textField pattern="#,##0.00" isBlankWhenNull="true">
+					<reportElement x="580" y="0" width="190" height="30" uuid="1772f464-aa63-4e54-b3ed-024f2d9478cd"/>
+					<box rightPadding="2">
+						<topPen lineWidth="0.03"/>
+						<leftPen lineWidth="0.03"/>
+						<bottomPen lineWidth="0.03"/>
+						<rightPen lineWidth="0.03"/>
+					</box>
+					<textElement textAlignment="Right" verticalAlignment="Middle"/>
+					<textFieldExpression><![CDATA[$V{sales_percent4}]]></textFieldExpression>
+				</textField>
+				<textField pattern="#,##0.00" isBlankWhenNull="true">
+					<reportElement x="770" y="0" width="205" height="30" uuid="001e6934-7c5f-49b5-a765-81285e1a1784"/>
+					<box rightPadding="2">
+						<topPen lineWidth="0.03"/>
+						<leftPen lineWidth="0.03"/>
+						<bottomPen lineWidth="0.03"/>
+						<rightPen lineWidth="0.03"/>
+					</box>
+					<textElement textAlignment="Right" verticalAlignment="Middle"/>
+					<textFieldExpression><![CDATA[$V{collection_percent4}]]></textFieldExpression>
+				</textField>
+			</band>
+		</groupFooter>
+	</group>
+	<title>
+		<band height="72">
+			<property name="com.jaspersoft.studio.unit.height" value="pixel"/>
+			<image>
+				<reportElement x="1" y="0" width="59" height="59" uuid="913eef32-aaa8-44a8-b1c3-cfd3296b78c7">
+					<property name="com.jaspersoft.studio.unit.width" value="pixel"/>
+				</reportElement>
+				<imageExpression><![CDATA[$P{companyLogo}]]></imageExpression>
+			</image>
+			<textField>
+				<reportElement x="239" y="54" width="500" height="18" uuid="06d6c3bf-0c18-45c6-a40b-842047c95b55">
+					<property name="com.jaspersoft.studio.unit.height" value="px"/>
+				</reportElement>
+				<textElement textAlignment="Center" verticalAlignment="Top">
+					<font size="12" isBold="true"/>
+				</textElement>
+				<textFieldExpression><![CDATA[$P{dateHeader}]]></textFieldExpression>
+			</textField>
+			<textField isBlankWhenNull="true">
+				<reportElement x="239" y="36" width="500" height="18" uuid="4e1ec8bd-ab2d-4b11-b263-4a99a83056b3"/>
+				<textElement textAlignment="Center" verticalAlignment="Top">
+					<font size="12" isBold="true"/>
+				</textElement>
+				<textFieldExpression><![CDATA["Performance Report "+$P{reportType}]]></textFieldExpression>
+			</textField>
+			<textField>
+				<reportElement x="239" y="0" width="500" height="18" uuid="58568659-5dbf-4445-aaee-7568f338b6fc">
+					<property name="com.jaspersoft.studio.unit.height" value="px"/>
+				</reportElement>
+				<textElement textAlignment="Center">
+					<font size="14" isBold="true"/>
+				</textElement>
+				<textFieldExpression><![CDATA[$P{companyName}]]></textFieldExpression>
+			</textField>
+			<textField>
+				<reportElement x="239" y="18" width="500" height="18" uuid="11436326-097c-414b-9ed7-a4dbea42e0d8">
+					<property name="com.jaspersoft.studio.unit.height" value="px"/>
+				</reportElement>
+				<textElement textAlignment="Center">
+					<font size="10"/>
+				</textElement>
+				<textFieldExpression><![CDATA[$P{companyAddress}]]></textFieldExpression>
+			</textField>
+		</band>
+	</title>
+	<columnHeader>
+		<band height="30">
+			<staticText>
+				<reportElement x="1" y="0" width="209" height="30" uuid="0782110d-690f-4912-9836-d209aca200f1">
+					<property name="com.jaspersoft.studio.spreadsheet.connectionID" value="8776fef5-c856-47e4-8949-e4345d43ad3f"/>
+					<property name="com.jaspersoft.studio.unit.width" value="px"/>
+				</reportElement>
+				<box>
+					<pen lineWidth="0.03"/>
+					<topPen lineWidth="0.03" lineStyle="Solid" lineColor="#000000"/>
+					<leftPen lineWidth="0.03" lineStyle="Solid" lineColor="#000000"/>
+					<bottomPen lineWidth="0.03" lineStyle="Solid" lineColor="#000000"/>
+					<rightPen lineWidth="0.03" lineStyle="Solid" lineColor="#000000"/>
+				</box>
+				<textElement textAlignment="Center" verticalAlignment="Middle">
+					<font isBold="true"/>
+				</textElement>
+				<text><![CDATA[Credit limit]]></text>
+			</staticText>
+			<staticText>
+				<reportElement x="210" y="0" width="190" height="30" uuid="25722a28-ac66-4dd1-a44b-d0a03aecf090">
+					<property name="com.jaspersoft.studio.spreadsheet.connectionID" value="93a0322c-d62b-4de6-8615-a4f52eccdc5c"/>
+				</reportElement>
+				<box>
+					<pen lineWidth="0.03"/>
+					<topPen lineWidth="0.03" lineStyle="Solid" lineColor="#000000"/>
+					<leftPen lineWidth="0.03" lineStyle="Solid" lineColor="#000000"/>
+					<bottomPen lineWidth="0.03" lineStyle="Solid" lineColor="#000000"/>
+					<rightPen lineWidth="0.03" lineStyle="Solid" lineColor="#000000"/>
+				</box>
+				<textElement textAlignment="Center" verticalAlignment="Middle">
+					<font isBold="true"/>
+				</textElement>
+				<text><![CDATA[Sales]]></text>
+			</staticText>
+			<staticText>
+				<reportElement x="400" y="0" width="180" height="30" uuid="c7677c5a-6378-48fb-850a-f8784375f29f">
+					<property name="com.jaspersoft.studio.spreadsheet.connectionID" value="59fde285-6f11-4631-a712-14480edbf807"/>
+				</reportElement>
+				<box>
+					<pen lineWidth="0.03"/>
+					<topPen lineWidth="0.03" lineStyle="Solid" lineColor="#000000"/>
+					<leftPen lineWidth="0.03" lineStyle="Solid" lineColor="#000000"/>
+					<bottomPen lineWidth="0.03" lineStyle="Solid" lineColor="#000000"/>
+					<rightPen lineWidth="0.03" lineStyle="Solid" lineColor="#000000"/>
+				</box>
+				<textElement textAlignment="Center" verticalAlignment="Middle">
+					<font isBold="true"/>
+				</textElement>
+				<text><![CDATA[Collection]]></text>
+			</staticText>
+			<staticText>
+				<reportElement x="580" y="0" width="190" height="30" uuid="23da82ae-943b-4e55-99ae-5af60037a9b6">
+					<property name="com.jaspersoft.studio.spreadsheet.connectionID" value="06438db0-48ae-42fc-970b-0a2bcda382fc"/>
+				</reportElement>
+				<box>
+					<pen lineWidth="0.03"/>
+					<topPen lineWidth="0.03" lineStyle="Solid" lineColor="#000000"/>
+					<leftPen lineWidth="0.03" lineStyle="Solid" lineColor="#000000"/>
+					<bottomPen lineWidth="0.03" lineStyle="Solid" lineColor="#000000"/>
+					<rightPen lineWidth="0.03" lineStyle="Solid" lineColor="#000000"/>
+				</box>
+				<textElement textAlignment="Center" verticalAlignment="Middle">
+					<font isBold="true"/>
+				</textElement>
+				<text><![CDATA[Sales %]]></text>
+			</staticText>
+			<staticText>
+				<reportElement x="770" y="0" width="205" height="30" uuid="7c1efe1a-dc35-4b05-a64c-be00493dfc45">
+					<property name="com.jaspersoft.studio.spreadsheet.connectionID" value="1e683f02-4da6-4b6f-be08-b59b1f83ac65"/>
+				</reportElement>
+				<box>
+					<pen lineWidth="0.03"/>
+					<topPen lineWidth="0.03" lineStyle="Solid" lineColor="#000000"/>
+					<leftPen lineWidth="0.03" lineStyle="Solid" lineColor="#000000"/>
+					<bottomPen lineWidth="0.03" lineStyle="Solid" lineColor="#000000"/>
+					<rightPen lineWidth="0.03" lineStyle="Solid" lineColor="#000000"/>
+				</box>
+				<textElement textAlignment="Center" verticalAlignment="Middle">
+					<font isBold="true"/>
+				</textElement>
+				<text><![CDATA[Collection %]]></text>
+			</staticText>
+		</band>
+	</columnHeader>
+	<pageFooter>
+		<band height="30">
+			<textField evaluationTime="Report">
+				<reportElement x="462" y="15" width="54" height="15" uuid="9d6e9a9c-47f5-404d-8fb2-059dc40fe921"/>
+				<box>
+					<topPen lineWidth="0.0" lineStyle="Solid" lineColor="#000000"/>
+					<leftPen lineWidth="0.0" lineStyle="Solid" lineColor="#000000"/>
+					<bottomPen lineWidth="0.0" lineStyle="Solid" lineColor="#000000"/>
+					<rightPen lineWidth="0.0" lineStyle="Solid" lineColor="#000000"/>
+				</box>
+				<textElement textAlignment="Left" verticalAlignment="Middle">
+					<font fontName="SansSerif" size="8" isBold="false"/>
+				</textElement>
+				<textFieldExpression><![CDATA[" of " + $V{PAGE_NUMBER}]]></textFieldExpression>
+			</textField>
+			<textField>
+				<reportElement x="797" y="0" width="70" height="15" uuid="93a2b552-2e57-45ca-a8aa-5f46c54f8c51">
+					<property name="com.jaspersoft.studio.unit.width" value="px"/>
+					<property name="com.jaspersoft.studio.unit.x" value="px"/>
+					<property name="com.jaspersoft.studio.unit.leftIndent" value="px"/>
+				</reportElement>
+				<textElement verticalAlignment="Middle">
+					<font fontName="SansSerif" size="8" isBold="false"/>
+					<paragraph leftIndent="2"/>
+				</textElement>
+				<textFieldExpression><![CDATA["Printed By :"]]></textFieldExpression>
+			</textField>
+			<textField>
+				<reportElement x="427" y="15" width="35" height="15" uuid="5c5624df-c0a2-4e87-8c9b-f21c63c396d5">
+					<property name="com.jaspersoft.studio.unit.height" value="px"/>
+					<property name="com.jaspersoft.studio.unit.width" value="px"/>
+				</reportElement>
+				<box>
+					<topPen lineWidth="0.0" lineStyle="Solid" lineColor="#000000"/>
+					<leftPen lineWidth="0.0" lineStyle="Solid" lineColor="#000000"/>
+					<bottomPen lineWidth="0.0" lineStyle="Solid" lineColor="#000000"/>
+					<rightPen lineWidth="0.0" lineStyle="Solid" lineColor="#000000"/>
+				</box>
+				<textElement textAlignment="Right" verticalAlignment="Middle">
+					<font fontName="SansSerif" size="8" isBold="false"/>
+				</textElement>
+				<textFieldExpression><![CDATA["Page " + $V{PAGE_NUMBER}]]></textFieldExpression>
+			</textField>
+			<textField>
+				<reportElement x="867" y="0" width="108" height="15" uuid="51dd973d-b571-48e8-814c-23464943d330">
+					<property name="com.jaspersoft.studio.unit.width" value="px"/>
+				</reportElement>
+				<textElement verticalAlignment="Middle">
+					<font fontName="SansSerif" size="8" isBold="false"/>
+				</textElement>
+				<textFieldExpression><![CDATA[$P{printedBy}]]></textFieldExpression>
+			</textField>
+			<textField pattern="dd-MMM-yyyy HH:mm a">
+				<reportElement x="867" y="15" width="108" height="15" uuid="20f69471-470f-4a64-ba15-c492af7b66cf">
+					<property name="com.jaspersoft.studio.unit.width" value="px"/>
+				</reportElement>
+				<textElement verticalAlignment="Middle">
+					<font fontName="SansSerif" size="8" isBold="false"/>
+				</textElement>
+				<textFieldExpression><![CDATA[new java.util.Date()]]></textFieldExpression>
+			</textField>
+			<textField>
+				<reportElement x="797" y="15" width="70" height="15" uuid="fb1a58db-6e5d-4f2a-9ccd-b8aff4e98ea5">
+					<property name="com.jaspersoft.studio.unit.width" value="px"/>
+					<property name="com.jaspersoft.studio.unit.x" value="px"/>
+					<property name="com.jaspersoft.studio.unit.leftIndent" value="px"/>
+				</reportElement>
+				<textElement verticalAlignment="Middle">
+					<font fontName="SansSerif" size="8" isBold="false"/>
+					<paragraph leftIndent="2"/>
+				</textElement>
+				<textFieldExpression><![CDATA["Date & Time :"]]></textFieldExpression>
+			</textField>
+			<textField>
+				<reportElement x="0" y="15" width="150" height="15" uuid="29148c35-a509-4e5e-8df4-806ed46f7102"/>
+				<textElement verticalAlignment="Middle">
+					<font fontName="SansSerif" size="8" isBold="false"/>
+				</textElement>
+				<textFieldExpression><![CDATA[$P{productOwner}]]></textFieldExpression>
+			</textField>
+		</band>
+	</pageFooter>
+</jasperReport>
